@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.frame_cache/
+frame_app.log*
+frame_escapes.csv
+frame-token.txt
