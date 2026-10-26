@@ -65,7 +65,7 @@ def _ha_option(key, default):
         return default
 
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 TV_IP = os.environ.get("FRAME_IP") or _ha_option("tv_ip", "192.168.0.60")
 PORT = int(os.environ.get("FRAME_PORT", "8800"))
 WATCHDOG_EVERY = 60  # seconds
@@ -212,7 +212,8 @@ class TV:
         """Fully off, like holding the remote's power button."""
         with self.lock:
             self._reset()
-            remote = self._remote(timeout=8)
+            # The first time, the TV asks on screen to allow this remote; give it time.
+            remote = self._remote(timeout=30 if not os.path.exists(TOKEN_FILE) else 10)
             try:
                 remote.hold_key("KEY_POWER", 3)
             finally:
@@ -534,9 +535,9 @@ def set_display(on: bool, source: str) -> str:
             except Exception:
                 pass
     else:
-        STATE.set("asleep", True)
         if TVC.power() == "on":
-            TVC.turn_off()
+            TVC.turn_off()  # raises if the TV won't take it; then nothing changes
+        STATE.set("asleep", True)
         log.info("Display: turned off from %s; staying off until switched on", source)
         result = "off"
     publish_state()
