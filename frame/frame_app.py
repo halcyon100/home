@@ -31,7 +31,7 @@ import socket
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -517,9 +517,33 @@ def maybe_wake(power: str) -> None:
         STATE.last_result = "Wake failed: %s" % e
 
 
+def next_wake_start(now=None) -> datetime:
+    now = now or datetime.now()
+    h, m = map(int, wake_settings()["from"].split(":"))
+    t = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    return t if t > now else t + timedelta(days=1)
+
+
+def check_asleep() -> bool:
+    """Off on purpose lasts until the next start of the wake hours; then the
+    app takes over again and turns it on."""
+    if not STATE.get("asleep"):
+        return False
+    until = STATE.get("asleep_until")
+    try:
+        if until and datetime.now() >= datetime.fromisoformat(until):
+            STATE.set("asleep", False)
+            log.info("Display: morning; back under the app's care")
+            return False
+    except ValueError:
+        pass
+    return True
+
+
 def api_wake_get() -> dict:
     w = wake_settings()
-    return dict(w, mac=tv_mac() or None, now=in_wake_hours(), asleep=bool(STATE.get("asleep")))
+    return dict(w, mac=tv_mac() or None, now=in_wake_hours(), asleep=bool(STATE.get("asleep")),
+                asleep_until=STATE.get("asleep_until") if STATE.get("asleep") else None)
 
 
 def set_display(on: bool, source: str) -> str:
@@ -538,7 +562,9 @@ def set_display(on: bool, source: str) -> str:
         if TVC.power() == "on":
             TVC.turn_off()  # raises if the TV won't take it; then nothing changes
         STATE.set("asleep", True)
-        log.info("Display: turned off from %s; staying off until switched on", source)
+        STATE.set("asleep_until", next_wake_start().isoformat(timespec="minutes"))
+        log.info("Display: turned off from %s; stays off until %s or until switched on",
+                 source, STATE.get("asleep_until"))
         result = "off"
     publish_state()
     return result
@@ -646,10 +672,11 @@ def watchdog_loop() -> None:
             continue
         STATE.last_check = datetime.now().isoformat(timespec="seconds")
         power = TVC.power()
-        publish_state(power)
-        if STATE.get("asleep"):
+        if check_asleep():
+            publish_state(power)
             STATE.last_result = "Switched off on purpose (TV is %s)" % power
             continue
+        publish_state(power)
         if power != "on":
             # Outside wake hours, leave it alone: it may have been turned off on purpose.
             STATE.last_result = "TV is %s" % power
@@ -2910,7 +2937,7 @@ function renderWake() {
   $("#wake-on").checked = wake.on;
   $("#wake-from").value = wake.from; $("#wake-to").value = wake.to;
   $("#wake-from").disabled = $("#wake-to").disabled = !wake.on;
-  $("#wake-sub").textContent = wake.asleep ? "Switched off on purpose. It stays off until you wake it."
+  $("#wake-sub").textContent = wake.asleep ? "Switched off on purpose. Back on at " + (wake.asleep_until || "").slice(11) + ", or Wake now."
     : !wake.mac ? "Learns the TV's address the next time it's on."
     : !wake.on ? "Off. If it switches off, it stays off."
     : wake.now ? "Within those hours now." : "Outside those hours now.";
