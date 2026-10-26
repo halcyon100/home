@@ -65,6 +65,7 @@ def _ha_option(key, default):
         return default
 
 
+APP_VERSION = "1.2.0"
 TV_IP = os.environ.get("FRAME_IP") or _ha_option("tv_ip", "192.168.0.60")
 PORT = int(os.environ.get("FRAME_PORT", "8800"))
 WATCHDOG_EVERY = 60  # seconds
@@ -181,17 +182,44 @@ class TV:
                 pass
         self._art = None
 
-    def call(self, fn):
+    def call(self, fn, limit: float = 25):
+        """Run fn(art). A request the TV never answers (it happens right after
+        waking) is abandoned after `limit` seconds instead of freezing the app."""
         with self.lock:
             for attempt in (1, 2):
-                if self._art is None:
-                    self._art = self._remote().art()
+                box = {}
+
+                def run():
+                    try:
+                        if self._art is None:
+                            self._art = self._remote().art()
+                        box["r"] = fn(self._art)
+                    except Exception as e:
+                        box["e"] = e
+
+                worker = threading.Thread(target=run, daemon=True)
+                worker.start()
+                worker.join(limit)
+                if worker.is_alive():
+                    box["e"] = TimeoutError("The Frame didn't answer")
+                if "e" not in box:
+                    return box.get("r")
+                self._reset()
+                if attempt == 2:
+                    raise box["e"]
+
+    def turn_off(self) -> None:
+        """Fully off, like holding the remote's power button."""
+        with self.lock:
+            self._reset()
+            remote = self._remote(timeout=8)
+            try:
+                remote.hold_key("KEY_POWER", 3)
+            finally:
                 try:
-                    return fn(self._art)
+                    remote.close()
                 except Exception:
-                    self._reset()
-                    if attempt == 2:
-                        raise
+                    pass
 
     def power(self) -> str:
         """'on', 'standby', or 'unreachable'. Uses plain HTTP, no art socket."""
@@ -458,6 +486,8 @@ def wake_tv(reason: str) -> str:
     for _ in range(20):
         time.sleep(2)
         if TVC.power() == "on":
+            TVC._reset()  # the old connection died when the TV went off
+            time.sleep(3)  # give it a moment to finish starting
             try:
                 TVC.call(lambda a: a.set_artmode(True))
             except Exception as e:
@@ -474,7 +504,7 @@ def maybe_wake(power: str) -> None:
         WAKE["tries"] = 0
         return
     w = wake_settings()
-    if not (w["on"] and in_wake_hours() and tv_mac()):
+    if STATE.get("asleep") or not (w["on"] and in_wake_hours() and tv_mac()):
         return
     if WAKE["tries"] >= WAKE_TRIES or time.time() - WAKE["last"] < WAKE_GAP:
         return
@@ -488,7 +518,29 @@ def maybe_wake(power: str) -> None:
 
 def api_wake_get() -> dict:
     w = wake_settings()
-    return dict(w, mac=tv_mac() or None, now=in_wake_hours())
+    return dict(w, mac=tv_mac() or None, now=in_wake_hours(), asleep=bool(STATE.get("asleep")))
+
+
+def set_display(on: bool, source: str) -> str:
+    """The on/off switch Home Assistant automations use. Off is deliberate:
+    the app won't wake it again until it is switched back on."""
+    if on:
+        STATE.set("asleep", False)
+        WAKE["tries"] = 0
+        result = "on" if TVC.power() == "on" else wake_tv("switched on from %s" % source)
+        if result == "on":
+            try:
+                TVC.call(lambda a: a.set_artmode(True))
+            except Exception:
+                pass
+    else:
+        STATE.set("asleep", True)
+        if TVC.power() == "on":
+            TVC.turn_off()
+        log.info("Display: turned off from %s; staying off until switched on", source)
+        result = "off"
+    publish_state()
+    return result
 
 
 def api_wake_set(p: dict) -> dict:
@@ -502,6 +554,88 @@ def api_wake_set(p: dict) -> dict:
     return api_wake_get()
 
 
+# ---------------------------------------------------------------- Home Assistant (MQTT)
+MQTT = {"client": None}
+BASE = "frame_app"
+
+
+def _mqtt_settings():
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return None
+    import urllib.request
+    req = urllib.request.Request("http://supervisor/services/mqtt",
+                                 headers={"Authorization": "Bearer " + token})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.load(r).get("data") or None
+
+
+def publish_state(power=None) -> None:
+    c = MQTT["client"]
+    if c is None:
+        return
+    try:
+        power = power or TVC.power()
+        c.publish(BASE + "/display/state", "ON" if power == "on" else "OFF", retain=True)
+        c.publish(BASE + "/asleep/state", "ON" if STATE.get("asleep") else "OFF", retain=True)
+    except Exception as e:
+        log.info("MQTT publish failed: %s", e)
+
+
+def mqtt_start() -> None:
+    try:
+        import paho.mqtt.client as mqtt
+        cfg = _mqtt_settings()
+    except Exception as e:
+        log.info("Home Assistant switch unavailable: %s", e)
+        return
+    if not cfg:
+        return
+    device = {"identifiers": [BASE], "name": "Frame", "manufacturer": "Samsung",
+              "model": "The Frame (Frame app)", "sw_version": APP_VERSION}
+    avail = {"availability_topic": BASE + "/status"}
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=BASE)
+    client.username_pw_set(cfg.get("username"), cfg.get("password"))
+    client.will_set(BASE + "/status", "offline", retain=True)
+
+    def on_connect(c, userdata, flags, rc, props=None):
+        c.publish("homeassistant/switch/%s/display/config" % BASE, json.dumps(dict(avail, **{
+            "name": "Display", "unique_id": BASE + "_display", "icon": "mdi:image-frame",
+            "command_topic": BASE + "/display/set", "state_topic": BASE + "/display/state",
+            "device": device})), retain=True)
+        c.publish(BASE + "/status", "online", retain=True)
+        c.subscribe(BASE + "/display/set")
+        publish_state()
+
+    def on_message(c, userdata, msg):
+        on = msg.payload.decode().strip().upper() == "ON"
+        threading.Thread(target=lambda: _safe_display(on), daemon=True).start()
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    client.reconnect_delay_set(2, 60)
+    host = cfg.get("host") or "127.0.0.1"
+    try:
+        socket.gethostbyname(host)
+    except OSError:
+        # On the host network the add-on hostnames may not resolve; Mosquitto
+        # also listens on the host's own port 1883.
+        host = "127.0.0.1"
+    cfg["host"] = host
+    client.connect_async(host, int(cfg.get("port", 1883)))
+    client.loop_start()
+    MQTT["client"] = client
+    log.info("Home Assistant switch: connecting to MQTT at %s", cfg.get("host"))
+
+
+def _safe_display(on: bool) -> None:
+    try:
+        set_display(on, "Home Assistant")
+    except Exception as e:
+        log.info("Display switch failed: %s", e)
+        publish_state()
+
+
 # ---------------------------------------------------------------- watchdog
 def watchdog_loop() -> None:
     while True:
@@ -510,6 +644,10 @@ def watchdog_loop() -> None:
             continue
         STATE.last_check = datetime.now().isoformat(timespec="seconds")
         power = TVC.power()
+        publish_state(power)
+        if STATE.get("asleep"):
+            STATE.last_result = "Switched off on purpose (TV is %s)" % power
+            continue
         if power != "on":
             # Outside wake hours, leave it alone: it may have been turned off on purpose.
             STATE.last_result = "TV is %s" % power
@@ -1319,7 +1457,9 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/wake":
                 return self.send_json(api_wake_set(payload))
             if url.path == "/api/wake/now":
-                return self.send_json({"result": wake_tv("woken from the app")})
+                return self.send_json({"result": set_display(True, "the app")})
+            if url.path == "/api/power":
+                return self.send_json({"result": set_display(bool(payload.get("on")), "the app")})
             self.send_json({"error": "Not found"}, 404)
         except Exception as e:
             self.fail(e)
@@ -1339,6 +1479,7 @@ def lan_address() -> str:
 def main() -> None:
     if not os.path.exists(TOKEN_FILE):
         print("First connection: watch the TV and choose Allow when it asks.\n")
+    mqtt_start()
     threading.Thread(target=watchdog_loop, daemon=True).start()
     threading.Thread(target=player_loop, daemon=True).start()
     threading.Thread(target=sched_loop, daemon=True).start()
@@ -2767,7 +2908,8 @@ function renderWake() {
   $("#wake-on").checked = wake.on;
   $("#wake-from").value = wake.from; $("#wake-to").value = wake.to;
   $("#wake-from").disabled = $("#wake-to").disabled = !wake.on;
-  $("#wake-sub").textContent = !wake.mac ? "Learns the TV's address the next time it's on."
+  $("#wake-sub").textContent = wake.asleep ? "Switched off on purpose. It stays off until you wake it."
+    : !wake.mac ? "Learns the TV's address the next time it's on."
     : !wake.on ? "Off. If it switches off, it stays off."
     : wake.now ? "Within those hours now." : "Outside those hours now.";
   $("#wake-now").disabled = !wake.mac;
