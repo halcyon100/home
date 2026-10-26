@@ -240,6 +240,34 @@ def write_cache(folder: str, cid: str, data: bytes) -> None:
         f.write(data)
 
 
+def cache_version(cid: str) -> int:
+    """Changes whenever a cached picture changes, so browsers don't keep a stale copy."""
+    v = 0
+    for folder in (THUMBS, FULL):
+        try:
+            v = max(v, int(os.path.getmtime(cache_path(folder, cid))))
+        except OSError:
+            pass
+    return v
+
+
+def import_cache(kind: str, cid: str, data: bytes) -> dict:
+    """Accept a cached picture copied from another install (e.g. the laptop version)."""
+    if kind not in ("thumbs", "full") or not SAFE_ID.match(cid):
+        raise ValueError("Unknown picture")
+    try:
+        Image.open(io.BytesIO(data)).verify()
+    except Exception:
+        raise ValueError("Not an image")
+    if kind == "full":
+        write_cache(FULL, cid, data)
+        write_cache(THUMBS, cid, small(data))  # portrait thumbnail made from the original
+    elif not os.path.exists(cache_path(FULL, cid)):
+        write_cache(THUMBS, cid, data)
+    THUMB_FAILS.pop(cid, None)
+    return {"ok": True, "id": cid, "kind": kind}
+
+
 def drop_cache(cid: str) -> None:
     for folder in (THUMBS, FULL):
         try:
@@ -261,6 +289,11 @@ def fetch_thumb(cid: str) -> bytes:
     cached = read_cache(THUMBS, cid)
     if cached:
         return cached
+    full = read_cache(FULL, cid)
+    if full:
+        data = small(full)
+        write_cache(THUMBS, cid, data)
+        return data
     if time.time() - THUMB_FAILS.get(cid, 0) < 300:
         raise RuntimeError("Thumbnail unavailable")
     with THUMB_LOCK:
@@ -369,6 +402,7 @@ def api_library() -> dict:
             "w": it.get("width"),
             "h": it.get("height"),
             "full": os.path.exists(cache_path(FULL, cid)),
+            "v": cache_version(cid),
         }
         is_mine = it.get("category_id") == MY_PHOTOS or cid.upper().startswith("MY")
         (mine if is_mine else samsung).append(entry)
@@ -1023,6 +1057,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"error": "That file isn't an image this app can read. "
                                            "For iPhone HEIC photos, run: pip3 install pillow-heif"}, 400)
                 return self.send_json(api_upload(body, fx, fy, show, prepared, collection))
+            if url.path == "/api/cache/import":
+                kind = q.get("kind", [""])[0]
+                cid = q.get("id", [""])[0]
+                try:
+                    return self.send_json(import_cache(kind, cid, self.read_body()))
+                except ValueError as e:
+                    return self.send_json({"error": str(e)}, 400)
             if url.path == "/api/convert":
                 try:
                     return self.send_bytes(api_convert(self.read_body()), "image/jpeg")
@@ -1118,14 +1159,17 @@ PAGE = r"""<!doctype html>
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--wall);color:var(--plaster);font:16px/1.5 var(--sans);
-  min-height:100vh;padding:0 0 env(safe-area-inset-bottom)}
+  min-height:100vh;min-height:100dvh;padding:0 0 env(safe-area-inset-bottom)}
 button{font:inherit;color:inherit;cursor:pointer}
 :focus-visible{outline:2px solid var(--brass);outline-offset:3px}
+.layout>*,.controls>*,details.panel,.play-row>*{min-width:0}
+html,body{overflow-x:clip}
+select,input{max-width:100%}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 
 .layout{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:56px;
   max-width:1240px;margin:0 auto;padding:40px 32px 64px}
-.side{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;
+.side{position:sticky;top:0;align-self:start;max-height:100vh;max-height:100dvh;overflow-y:auto;
   padding:32px 6px 32px 0;margin-top:-32px;scrollbar-width:thin}
 
 /* the wall: picture light, bezel, matte screen */
@@ -1261,7 +1305,7 @@ input[type=range]{width:100%;accent-color:var(--brass)}
 .night[hidden]{display:none}
 .switch:disabled{opacity:.5;cursor:default}
 .switch[hidden],.field[hidden]{display:none}
-.play-row{display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;font-size:14px;color:var(--sage)}
+.play-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 12px;align-items:center;font-size:14px;color:var(--sage)}
 select{font:inherit;color:var(--plaster);background:var(--wall-lift);border:0;border-radius:8px;padding:8px 10px;width:100%}
 .check{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--sage)}
 .check input{accent-color:var(--brass);width:16px;height:16px}
@@ -1304,18 +1348,24 @@ dialog h2{font:400 22px var(--serif);margin:0 0 8px}
 dialog p{margin:0 0 20px;color:var(--sage)}
 dialog .bar{display:flex;gap:10px;justify-content:flex-end}
 
-@media (max-width:860px){
-  .layout{grid-template-columns:1fr;gap:40px;padding:24px 18px 48px}
+/* Layout responds to the space it actually has (container queries), not the device. */
+.page{container:page / inline-size}
+main{container:lib / inline-size}
+@container page (max-width:860px){
+  .layout{grid-template-columns:minmax(0,1fr);gap:36px;padding:20px 16px 48px}
   .side{position:static;max-height:none;overflow:visible;margin-top:0;padding:0}
-  .tv{max-width:min(56vw,260px)}
+  .tv{max-width:min(56cqi,260px)}
+}
+@container lib (max-width:640px){
   .head{gap:10px}
-  .tabs{gap:18px;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;scrollbar-width:none}
+  .tabs{gap:18px;width:100%;overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;scrollbar-width:none;
+    overscroll-behavior-x:contain}
   .tabs::-webkit-scrollbar{display:none}
   .tabs button{font-size:19px;white-space:nowrap;flex:none}
   .head .btn{padding:8px 16px}
   .droppad{padding:16px 18px;margin-bottom:22px}
   .droppad strong{font-size:19px}
-  .grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:22px 14px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(min(104px,28cqi),1fr));gap:22px 14px}
   .drophint{display:none}
 }
 
@@ -1327,6 +1377,8 @@ details.panel>summary::after{content:"";width:8px;height:8px;border:solid var(--
 details.panel:not([open])>summary::after{transform:rotate(-45deg);margin:0 6px 0 0}
 details.panel:not([open])>summary{margin-bottom:0}
 /* schedule slots */
+.tools{display:grid;gap:10px}
+.tool-note{margin:0;font-size:14px;color:var(--sage)}
 .slots{list-style:none;margin:0;padding:0;display:grid;gap:12px}
 .slot{background:var(--wall-lift);border-radius:12px;padding:12px 12px 14px;display:grid;gap:8px;border:1px solid transparent}
 .slot.now{border-color:var(--brass)}
@@ -1341,14 +1393,15 @@ details.panel:not([open])>summary{margin-bottom:0}
 .slot-opts{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .slot-opts select{flex:1;min-width:150px;background:var(--wall-deep)}
 .night{padding-left:0}
-@media (min-width:861px) and (max-height:620px){
+@media (max-height:620px){
   .side{position:static;max-height:none;overflow:visible;margin-top:0;padding:0}
 }
-@media (max-width:860px) and (orientation:landscape){ .tv{max-width:150px} }
+@media (max-height:520px){ .tv{max-width:150px} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
+<div class="page">
 <div class="layout">
   <aside class="side">
     <div class="wall" id="wall">
@@ -1400,8 +1453,15 @@ details.panel:not([open])>summary{margin-bottom:0}
       </details>
       <button class="switch" role="switch" aria-checked="false" id="watch">
         <span class="knob" aria-hidden="true"></span>
-        <span><strong>Keep it in Art Mode</strong><small id="watch-sub">Checks every minute while this app is running.</small></span>
+        <span><strong>Keep it in Art Mode</strong><small id="watch-sub">Checks every minute.</small></span>
       </button>
+      <details class="panel tools" id="tools-box">
+        <summary class="row-label">Tools</summary>
+        <p class="tool-note">Bring over sharp, uncropped previews from the laptop version: choose its
+          “Frame cache for Home Assistant” folder.</p>
+        <button class="btn ghost small" id="import-btn" type="button">Import previews…</button>
+        <input type="file" id="import-file" webkitdirectory multiple class="sr" tabindex="-1">
+      </details>
     </div>
   </aside>
 
@@ -1427,6 +1487,7 @@ details.panel:not([open])>summary{margin-bottom:0}
     <ul class="grid" id="grid" aria-label="Pictures on the Frame"></ul>
     <p class="empty" id="empty" hidden></p>
   </main>
+</div>
 </div>
 
 <section class="editor" id="editor" aria-label="Prepare photos">
@@ -1547,7 +1608,7 @@ function toast(msg, err) {
 function imgSrc(id) {
   const all = lib.mine.concat(lib.samsung);
   const it = all.find(x => x.id === id);
-  return (it && it.full ? "/full/" : "/thumb/") + encodeURIComponent(id);
+  return (it && it.full ? "/full/" : "/thumb/") + encodeURIComponent(id) + (it && it.v ? "?v=" + it.v : "");
 }
 
 /* ---------- status ---------- */
@@ -1587,7 +1648,7 @@ function renderStatus() {
   $("#watch-sub").textContent = !s.watchdog ? "Off. Samsung's software can switch the TV away from art."
     : e.today ? "On. Pulled it back " + plural(e.today, "time") + " today."
     : e.total ? "On. No escapes today, " + e.total + " in total."
-    : "On. Checks every minute while this app is running.";
+    : "On. Checks every minute.";
   document.querySelectorAll("#grid li").forEach(li => li.classList.toggle("current", li.dataset.id === s.current));
 }
 function button(text, cls, fn) { const b = document.createElement("button"); b.className = cls; b.textContent = text; b.onclick = fn; return b; }
@@ -1652,7 +1713,7 @@ function renderLibrary() {
     b.setAttribute("aria-label", selecting ? "Select " + it.id : "Put " + it.id + " on the wall");
     const im = new Image(); im.loading = "lazy"; im.alt = ""; im.onload = () => im.classList.add("in");
     im.onerror = () => { b.classList.add("noprev"); b.dataset.label = it.id; };
-    im.src = "/thumb/" + encodeURIComponent(it.id);
+    im.src = "/thumb/" + encodeURIComponent(it.id) + (it.v ? "?v=" + it.v : "");
     b.append(im); b.onclick = () => selecting ? toggleSel(it.id, li) : show(it.id);
     li.innerHTML = '<span class="tick"></span>';
     li.prepend(b);
@@ -1798,7 +1859,7 @@ function renderPlay() {
     now.innerHTML = "";
     now.append("Playing " + p.label + ", every " + everyLabel(p.minutes) + (p.shuffle ? ", shuffled" : ""));
     const sm = document.createElement("small");
-    sm.textContent = p.mode === "tv" ? "Runs on the TV. Your computer can sleep." : "Changes from this app. Keep it running.";
+    sm.textContent = p.mode === "tv" ? "Runs on the TV." : "Changed by this app on Home Assistant.";
     now.append(sm);
     $("#play-what").value = p.target; $("#play-every").value = String(p.minutes); $("#play-shuffle").checked = !!p.shuffle;
   } else if (r.tv && r.tv.value && r.tv.value !== "off") {
@@ -2387,6 +2448,29 @@ $("#slot-add").onclick = () => {
   if (!sched) return;
   const base = sched.slots.find(s => s.current) || sched.slots[0] || {brightness: 5, sensor: false};
   saveSlots(sched.slots.concat([{id: "", at: "time", time: "12:00", offset: 0, brightness: base.brightness, sensor: base.sensor, warmth: null}]));
+};
+
+/* ---------- import previews from the laptop version ---------- */
+$("#import-btn").onclick = () => $("#import-file").click();
+$("#import-file").onchange = async e => {
+  const files = Array.from(e.target.files || []).filter(f => /^[A-Za-z0-9_\-]{1,64}\.(img|jpe?g)$/i.test(f.name));
+  e.target.value = "";
+  if (!files.length) { toast("No previews found in that folder.", true); return; }
+  // thumbnails first, originals last, so the sharper original-made preview wins
+  files.sort((a, b) => /\/full\//.test(a.webkitRelativePath) - /\/full\//.test(b.webkitRelativePath));
+  let ok = 0, n = 0;
+  for (const f of files) {
+    n++;
+    if (n % 5 === 1) toast("Importing " + n + " of " + files.length + "…");
+    const kind = /(^|\/)full\//.test(f.webkitRelativePath) ? "full" : "thumbs";
+    const id = f.name.replace(/\.[^.]+$/, "");
+    try {
+      const r = await fetch("/api/cache/import?kind=" + kind + "&id=" + encodeURIComponent(id), {method: "POST", body: f});
+      if (r.ok) ok++;
+    } catch (err) {}
+  }
+  toast("Imported " + ok + " of " + files.length + " previews.");
+  refreshLibrary();
 };
 
 /* ---------- collapsible panels ---------- */
