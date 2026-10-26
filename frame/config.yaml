@@ -1,0 +1,20 @@
+name: Frame
+version: "1.0.0"
+slug: frame
+description: Keeps the Samsung Frame in Art Mode, hangs photos, plays collections and runs its brightness schedule.
+url: https://github.com/halcyon100/home/tree/main/frame
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+ports:
+  8800/tcp: 8800
+ports_description:
+  8800/tcp: Frame web app
+webui: "http://[HOST]:[PORT:8800]/"
+options:
+  tv_ip: 192.168.0.60
+schema:
+  tv_ip: str

@@ -1,0 +1,53 @@
+{
+  "watchdog": true,
+  "rotation_get": "get_slideshow_status",
+  "collections": {
+    "c1792686386049": {
+      "name": "Italy 2026",
+      "items": [
+        "MY_F0006",
+        "MY_F0007",
+        "MY_F0008",
+        "MY_F0009",
+        "MY_F0010",
+        "MY_F0011",
+        "MY_F0012",
+        "MY_F0013",
+        "MY_F0014",
+        "MY_F0015",
+        "MY_F0016",
+        "MY_F0017",
+        "MY_F0018",
+        "MY_F0019",
+        "MY_F0020",
+        "MY_F0021",
+        "MY_F0022",
+        "MY_F0023",
+        "MY_F0024",
+        "MY_F0025",
+        "MY_F0026",
+        "MY_F0027",
+        "MY_F0028",
+        "MY_F0029"
+      ]
+    }
+  },
+  "playing": {
+    "target": "c1792686386049",
+    "minutes": 3,
+    "shuffle": true,
+    "mode": "app",
+    "next_at": 1792974277.0639539,
+    "last": "MY_F0016"
+  },
+  "dim": {
+    "on": true,
+    "sensor": true,
+    "day": 7,
+    "evening": 3,
+    "night": 0,
+    "evening_start": "sunset",
+    "quiet_start": "22:00",
+    "quiet_end": "07:00"
+  }
+}
