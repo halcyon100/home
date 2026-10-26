@@ -197,6 +197,9 @@ class TV:
         """'on', 'standby', or 'unreachable'. Uses plain HTTP, no art socket."""
         try:
             info = self._remote(timeout=4).rest_device_info().get("device", {})
+            mac = str(info.get("wifiMac") or "").lower()
+            if re.fullmatch(r"([0-9a-f]{2}:){5}[0-9a-f]{2}", mac) and STATE.get("tv_mac") != mac:
+                STATE.set("tv_mac", mac)
             return str(info.get("PowerState", "on")).lower()
         except Exception:
             return "unreachable"
@@ -396,6 +399,109 @@ def image_type(data: bytes) -> str:
     return "image/png" if data[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
 
 
+# ---------------------------------------------------------------- wake
+WAKE_DEFAULT = {"on": True, "from": "07:00", "to": "22:00"}
+WAKE_GAP = 10 * 60      # seconds between automatic wake tries
+WAKE_TRIES = 3          # automatic tries before giving up until the TV is seen on again
+WAKE = {"last": 0.0, "tries": 0}
+
+
+def tv_mac() -> str:
+    return str(_ha_option("tv_mac", "") or STATE.get("tv_mac") or "").lower()
+
+
+def wake_settings() -> dict:
+    w = dict(WAKE_DEFAULT)
+    w.update(STATE.get("wake") or {})
+    return w
+
+
+def _hhmm(v: str, fallback: str) -> str:
+    return v if re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(v)) else fallback
+
+
+def in_wake_hours(now=None) -> bool:
+    w = wake_settings()
+    t = (now or datetime.now()).strftime("%H:%M")
+    a, b = w["from"], w["to"]
+    return a <= t < b if a <= b else (t >= a or t < b)
+
+
+def send_wol(mac: str) -> None:
+    """Wake-on-LAN magic packet. 'Power On with Mobile' on the TV listens for it."""
+    raw = bytes.fromhex(mac.replace(":", ""))
+    packet = b"\xff" * 6 + raw * 16
+    targets = ["255.255.255.255"]
+    parts = TV_IP.split(".")
+    if len(parts) == 4:
+        targets.append(".".join(parts[:3] + ["255"]))
+    targets.append(TV_IP)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
+        sk.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        for _ in range(3):
+            for host in targets:
+                for port in (9, 7):
+                    try:
+                        sk.sendto(packet, (host, port))
+                    except OSError:
+                        pass
+            time.sleep(0.2)
+
+
+def wake_tv(reason: str) -> str:
+    """Send the wake packet, wait for the TV to answer, then ask for Art Mode."""
+    mac = tv_mac()
+    if not mac:
+        raise ValueError("I don't know the Frame's MAC address yet. It's learned the next time the TV is on.")
+    send_wol(mac)
+    log.info("Wake: sent Wake-on-LAN to %s (%s)", mac, reason)
+    for _ in range(20):
+        time.sleep(2)
+        if TVC.power() == "on":
+            try:
+                TVC.call(lambda a: a.set_artmode(True))
+            except Exception as e:
+                log.info("Wake: TV is on but Art Mode didn't take yet: %s", e)
+            log_escape("TV was %s; woke it into Art Mode" % reason)
+            log.info("Wake: TV is on")
+            return "on"
+    log.info("Wake: no answer after 40 seconds")
+    return "no answer"
+
+
+def maybe_wake(power: str) -> None:
+    if power == "on":
+        WAKE["tries"] = 0
+        return
+    w = wake_settings()
+    if not (w["on"] and in_wake_hours() and tv_mac()):
+        return
+    if WAKE["tries"] >= WAKE_TRIES or time.time() - WAKE["last"] < WAKE_GAP:
+        return
+    WAKE["last"] = time.time()
+    WAKE["tries"] += 1
+    try:
+        STATE.last_result = "Woke it: %s" % wake_tv(power)
+    except Exception as e:
+        STATE.last_result = "Wake failed: %s" % e
+
+
+def api_wake_get() -> dict:
+    w = wake_settings()
+    return dict(w, mac=tv_mac() or None, now=in_wake_hours())
+
+
+def api_wake_set(p: dict) -> dict:
+    w = wake_settings()
+    if "on" in p:
+        w["on"] = bool(p["on"])
+    w["from"] = _hhmm(p.get("from", w["from"]), w["from"])
+    w["to"] = _hhmm(p.get("to", w["to"]), w["to"])
+    STATE.set("wake", w)
+    WAKE["tries"] = 0
+    return api_wake_get()
+
+
 # ---------------------------------------------------------------- watchdog
 def watchdog_loop() -> None:
     while True:
@@ -405,9 +511,11 @@ def watchdog_loop() -> None:
         STATE.last_check = datetime.now().isoformat(timespec="seconds")
         power = TVC.power()
         if power != "on":
-            # Turned off on purpose, asleep, or off the network: leave it alone.
+            # Outside wake hours, leave it alone: it may have been turned off on purpose.
             STATE.last_result = "TV is %s" % power
+            maybe_wake(power)
             continue
+        WAKE["tries"] = 0
         try:
             mode = TVC.call(lambda a: a.get_artmode())
             if artmode_is_on(mode):
@@ -1110,6 +1218,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(api_display())
             if url.path == "/api/schedule":
                 return self.send_json(api_schedule_get())
+            if url.path == "/api/wake":
+                return self.send_json(api_wake_get())
             m = re.match(r"^/api/recipe/([A-Za-z0-9_\-]{1,64})$", url.path)
             if m:
                 return self.send_json({"id": m.group(1), "recipe": read_recipe(m.group(1))})
@@ -1206,6 +1316,10 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/watchdog":
                 STATE.set("watchdog", bool(payload.get("on")))
                 return self.send_json({"ok": True})
+            if url.path == "/api/wake":
+                return self.send_json(api_wake_set(payload))
+            if url.path == "/api/wake/now":
+                return self.send_json({"result": wake_tv("woken from the app")})
             self.send_json({"error": "Not found"}, 404)
         except Exception as e:
             self.fail(e)
@@ -1483,6 +1597,12 @@ details.panel:not([open])>summary{margin-bottom:0}
 /* schedule slots */
 .tools{display:grid;gap:10px}
 .tool-note{margin:0;font-size:14px;color:var(--sage)}
+.wake{display:grid;gap:8px;padding-left:56px}
+.wake-times{display:flex;gap:8px;align-items:center;color:var(--sage);font-size:14px}
+.wake-times input{flex:1;min-width:0;font:inherit;color:var(--plaster);background:var(--wall-lift);border:0;border-radius:8px;padding:7px 10px;color-scheme:dark}
+.wake-foot{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.wake-foot small{color:var(--sage);font-size:13px;flex:1;min-width:140px}
+@container page (max-width:860px){.wake{padding-left:0}}
 .slots{list-style:none;margin:0;padding:0;display:grid;gap:12px}
 .slot{background:var(--wall-lift);border-radius:12px;padding:12px 12px 14px;display:grid;gap:8px;border:1px solid transparent}
 .slot.now{border-color:var(--brass)}
@@ -1559,6 +1679,17 @@ details.panel:not([open])>summary{margin-bottom:0}
         <span class="knob" aria-hidden="true"></span>
         <span><strong>Keep it in Art Mode</strong><small id="watch-sub">Checks every minute.</small></span>
       </button>
+      <div class="wake" id="wake-box">
+        <label class="check"><input type="checkbox" id="wake-on"> Turn it back on if it switches off between</label>
+        <div class="wake-times">
+          <input type="time" id="wake-from" aria-label="From"> <span>and</span>
+          <input type="time" id="wake-to" aria-label="To">
+        </div>
+        <div class="wake-foot">
+          <small id="wake-sub"></small>
+          <button class="btn ghost small" id="wake-now" type="button">Wake now</button>
+        </div>
+      </div>
       <details class="panel tools" id="tools-box">
         <summary class="row-label">Tools</summary>
         <p class="tool-note">Bring over sharp, uncropped previews from the laptop version: choose its
@@ -2630,7 +2761,30 @@ document.querySelectorAll("details.panel").forEach(d => {
 });
 
 /* ---------- start ---------- */
-refreshStatus().then(refreshLibrary).then(refreshRotation).then(refreshDisplay).then(refreshSched);
+let wake = null;
+function renderWake() {
+  if (!wake) return;
+  $("#wake-on").checked = wake.on;
+  $("#wake-from").value = wake.from; $("#wake-to").value = wake.to;
+  $("#wake-from").disabled = $("#wake-to").disabled = !wake.on;
+  $("#wake-sub").textContent = !wake.mac ? "Learns the TV's address the next time it's on."
+    : !wake.on ? "Off. If it switches off, it stays off."
+    : wake.now ? "Within those hours now." : "Outside those hours now.";
+  $("#wake-now").disabled = !wake.mac;
+}
+async function refreshWake() { try { wake = await api("/api/wake"); renderWake(); } catch (e) {} }
+async function saveWake() {
+  try { wake = await post("/api/wake", {on: $("#wake-on").checked, from: $("#wake-from").value, to: $("#wake-to").value}); renderWake(); }
+  catch (e) { toast(e.message, true); refreshWake(); }
+}
+$("#wake-on").onchange = saveWake; $("#wake-from").onchange = saveWake; $("#wake-to").onchange = saveWake;
+$("#wake-now").onclick = async () => {
+  const b = $("#wake-now"); b.disabled = true; toast("Waking the Frame…");
+  try { const r = await post("/api/wake/now", {}); toast(r.result === "on" ? "It's awake" : "No answer from the TV", r.result !== "on"); refreshStatus(); }
+  catch (e) { toast(e.message, true); }
+  b.disabled = false;
+};
+refreshStatus().then(refreshLibrary).then(refreshRotation).then(refreshDisplay).then(refreshSched).then(refreshWake);
 setInterval(refreshSched, 300000);
 setInterval(refreshRotation, 120000);
 setInterval(refreshStatus, 20000);
