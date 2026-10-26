@@ -81,7 +81,11 @@ if not os.path.exists(STATE_FILE) and os.path.exists(SEED_STATE):
     shutil.copyfile(SEED_STATE, STATE_FILE)
 THUMBS = os.path.join(CACHE, "thumbs")
 FULL = os.path.join(CACHE, "full")
-for d in (THUMBS, FULL):
+# Originals (resized to a sensible size) and the frame/crop recipe used, so any picture
+# can be reframed or recropped later without the source photo.
+ORIGINALS = os.path.join(DATA, "originals")
+RECIPES = os.path.join(DATA, "recipes")
+for d in (THUMBS, FULL, ORIGINALS, RECIPES):
     os.makedirs(d, exist_ok=True)
 
 # The TV uses a self-signed certificate on your own network; that's expected.
@@ -276,6 +280,61 @@ def drop_cache(cid: str) -> None:
             pass
 
 
+def original_path(cid: str) -> str:
+    return os.path.join(ORIGINALS, cid + ".jpg")
+
+
+def recipe_path(cid: str) -> str:
+    return os.path.join(RECIPES, cid + ".json")
+
+
+def read_recipe(cid: str):
+    try:
+        with open(recipe_path(cid)) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+RECIPE_KEYS = {"style": str, "mat": float, "fit": str, "zoom": float, "fx": float, "fy": float,
+               "turn": int, "tilt": float}
+
+
+def clean_recipe(r) -> dict:
+    out = {}
+    if isinstance(r, dict):
+        for k, t in RECIPE_KEYS.items():
+            if k in r:
+                try:
+                    out[k] = t(r[k]) if t is not str else str(r[k])[:32]
+                except (TypeError, ValueError):
+                    pass
+    return out
+
+
+def save_original(cid: str, data: bytes) -> dict:
+    """Keep a sensibly sized JPEG of the source photo (long edge up to 4096 px)."""
+    if not SAFE_ID.match(cid):
+        raise ValueError("Unknown picture")
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
+    except Exception:
+        raise ValueError("Not an image")
+    if max(img.size) > 4096:
+        img.thumbnail((4096, 4096), Image.LANCZOS)
+    img.convert("RGB").save(original_path(cid), "JPEG", quality=90)
+    return {"ok": True, "id": cid, "size": list(img.size)}
+
+
+def forget_original(cid: str) -> None:
+    for path in (original_path(cid), recipe_path(cid)):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 THUMB_FAILS = {}  # content_id -> time of last failure
 THUMB_LOCK = threading.Lock()
 
@@ -403,6 +462,7 @@ def api_library() -> dict:
             "h": it.get("height"),
             "full": os.path.exists(cache_path(FULL, cid)),
             "v": cache_version(cid),
+            "orig": os.path.exists(original_path(cid)),
         }
         is_mine = it.get("category_id") == MY_PHOTOS or cid.upper().startswith("MY")
         (mine if is_mine else samsung).append(entry)
@@ -421,7 +481,7 @@ def api_show(cid: str) -> dict:
 
 
 def api_upload(body: bytes, fx: float, fy: float, show: bool, prepared: bool = False,
-               collection: str = "") -> dict:
+               collection: str = "", recipe=None, replace: str = "") -> dict:
     jpeg = body
     if prepared:
         img = Image.open(io.BytesIO(body))
@@ -440,11 +500,34 @@ def api_upload(body: bytes, fx: float, fy: float, show: bool, prepared: bool = F
     if cid and SAFE_ID.match(cid):
         write_cache(FULL, cid, jpeg)
         write_cache(THUMBS, cid, small(jpeg))
+    if cid and SAFE_ID.match(cid):
+        if recipe:
+            with open(recipe_path(cid), "w") as f:
+                json.dump(clean_recipe(recipe), f)
+        if replace and SAFE_ID.match(replace) and replace != cid:
+            swap_picture(replace, cid)
     if collection and cid and collection in collections():
         api_collections({"action": "add", "id": collection, "ids": [cid]})
     LIB_CACHE["t"] = 0
-    log.info("Hung %s (%d KB)", cid, len(jpeg) // 1024)
+    log.info("Hung %s (%d KB)%s", cid, len(jpeg) // 1024, " replacing %s" % replace if replace else "")
     return {"ok": True, "id": cid}
+
+
+def swap_picture(old: str, new: str) -> None:
+    """A reframed picture replaces the old one: same original, same place in collections."""
+    if os.path.exists(original_path(old)) and not os.path.exists(original_path(new)):
+        os.replace(original_path(old), original_path(new))
+    c = collections()
+    for col in c.values():
+        if old in col["items"]:
+            col["items"] = list(dict.fromkeys(new if i == old else i for i in col["items"]))
+    save_collections(c)
+    try:
+        TVC.call(lambda a: a.delete_list([old]))
+    except Exception as e:
+        log.info("Couldn't remove the old version %s from the TV: %s", old, e)
+    drop_cache(old)
+    forget_original(old)
 
 
 def api_convert(body: bytes) -> bytes:
@@ -468,6 +551,7 @@ def api_delete(ids: list) -> dict:
     TVC.call(lambda a: a.delete_list(ids))
     for cid in ids:
         drop_cache(cid)
+        forget_original(cid)
     forget_pictures(ids)
     LIB_CACHE["t"] = 0
     log.info("Deleted %s", ", ".join(ids))
@@ -1026,6 +1110,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(api_display())
             if url.path == "/api/schedule":
                 return self.send_json(api_schedule_get())
+            m = re.match(r"^/api/recipe/([A-Za-z0-9_\-]{1,64})$", url.path)
+            if m:
+                return self.send_json({"id": m.group(1), "recipe": read_recipe(m.group(1))})
+            m = re.match(r"^/original/([A-Za-z0-9_\-]{1,64})$", url.path)
+            if m:
+                try:
+                    with open(original_path(m.group(1)), "rb") as f:
+                        return self.send_bytes(f.read(), "image/jpeg")
+                except OSError:
+                    return self.send_json({"error": "No original kept for that picture"}, 404)
             m = re.match(r"^/(thumb|full)/([A-Za-z0-9_\-]{1,64})$", url.path)
             if m:
                 kind, cid = m.groups()
@@ -1050,13 +1144,23 @@ class Handler(BaseHTTPRequestHandler):
                 show = q.get("show", ["0"])[0] == "1"
                 prepared = q.get("prepared", ["0"])[0] == "1"
                 collection = q.get("collection", [""])[0]
+                replace = q.get("replace", [""])[0]
+                try:
+                    recipe = json.loads(q.get("recipe", [""])[0] or "null")
+                except ValueError:
+                    recipe = None
                 body = self.read_body()
                 try:
                     Image.open(io.BytesIO(body))
                 except Exception:
                     return self.send_json({"error": "That file isn't an image this app can read. "
                                            "For iPhone HEIC photos, run: pip3 install pillow-heif"}, 400)
-                return self.send_json(api_upload(body, fx, fy, show, prepared, collection))
+                return self.send_json(api_upload(body, fx, fy, show, prepared, collection, recipe, replace))
+            if url.path == "/api/original":
+                try:
+                    return self.send_json(save_original(q.get("id", [""])[0], self.read_body(40 * 1024 * 1024)))
+                except ValueError as e:
+                    return self.send_json({"error": str(e)}, 400)
             if url.path == "/api/cache/import":
                 kind = q.get("kind", [""])[0]
                 cid = q.get("id", [""])[0]
@@ -1471,6 +1575,7 @@ details.panel:not([open])>summary{margin-bottom:0}
       <button class="btn ghost" id="select-btn">Select</button>
       <button class="btn ghost" id="addto-btn" hidden>Add to collection</button>
       <button class="btn ghost" id="takeout-btn" hidden>Remove from collection</button>
+      <button class="btn ghost" id="reframe-btn" hidden>Reframe</button>
       <button class="btn danger" id="delete-btn" hidden>Delete</button>
       <input type="file" id="file" accept="image/*,.heic,.heif" multiple class="sr" tabindex="-1">
     </div>
@@ -1749,7 +1854,33 @@ function updateDelete() {
   d.hidden = !selecting; d.disabled = n === 0; d.textContent = n ? "Delete " + n : "Delete";
   a.hidden = !selecting || inCol; a.disabled = n === 0;
   t.hidden = !selecting || !inCol; t.disabled = n === 0;
+  const r = $("#reframe-btn"), ids = [...selected], canFrame = ids.filter(id => (byId(id) || {}).orig);
+  r.hidden = !selecting;
+  r.disabled = canFrame.length === 0;
+  r.textContent = canFrame.length ? "Reframe " + canFrame.length : "Reframe";
+  r.title = ids.length && canFrame.length < ids.length
+    ? "Only pictures hung from this version keep an original to reframe from." : "";
 }
+$("#reframe-btn").onclick = async () => {
+  const ids = [...selected].filter(id => (byId(id) || {}).orig);
+  if (!ids.length) return toast("Those pictures don't have an original kept. Re-add them to make them reframable.", true);
+  setSelecting(false);
+  items = ids.map(id => ({name: id, replaces: id, fromBox: true, s: defaults(), img: null, loading: true}));
+  cur = 0; openEditor(); $("#ed-col").value = "";
+  for (const it of items) {
+    try {
+      const [img, rec] = await Promise.all([
+        fetch("/original/" + encodeURIComponent(it.replaces)).then(r => { if (!r.ok) throw new Error("Original missing"); return r.blob(); }).then(loadInBrowser),
+        api("/api/recipe/" + encodeURIComponent(it.replaces))]);
+      Object.assign(it, img);
+      if (rec.recipe) it.s = Object.assign(defaults(), rec.recipe);
+    } catch (e) { it.error = e.message; toast(it.name + ": " + e.message, true); }
+    it.loading = false;
+    if (items[cur] === it) refreshEditor(); else renderQueue();
+  }
+  items = items.filter(it => !it.error);
+  if (!items.length) closeEditor(); else { cur = Math.min(cur, items.length - 1); refreshEditor(); }
+};
 $("#select-btn").onclick = () => setSelecting(!selecting);
 $("#delete-btn").onclick = () => {
   const n = selected.size; if (!n) return;
@@ -2302,6 +2433,17 @@ addEventListener("resize", () => { if ($("#editor").classList.contains("open")) 
   }, {passive: false});
 })();
 
+/* The original we keep on the box: the photo as opened, long edge at most 4096 px. */
+function sourceJpeg(it) {
+  const k = Math.min(1, 4096 / Math.max(it.w, it.h));
+  const c = document.createElement("canvas"); c.width = Math.round(it.w * k); c.height = Math.round(it.h * k);
+  c.getContext("2d").drawImage(it.img, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error("Couldn't keep the original")), "image/jpeg", 0.9));
+}
+function recipeOf(it) {
+  const s = it.s;
+  return {style: s.style, mat: s.mat, fit: s.fit, zoom: s.zoom, fx: s.fx, fy: s.fy, turn: s.turn || 0, tilt: s.tilt || 0};
+}
 function finalJpeg(it) {
   const c = document.createElement("canvas"); c.width = OUT_W; c.height = OUT_H;
   render(c.getContext("2d"), OUT_W, OUT_H, it);
@@ -2322,14 +2464,21 @@ $("#ed-go").onclick = async () => {
       const blob = await finalJpeg(it);
       const last = i === items.length - 1 ? 1 : 0;
       const col = $("#ed-col").value;
-      await api("/api/upload?prepared=1&show=" + last + (col ? "&collection=" + encodeURIComponent(col) : ""), {method: "POST", body: blob});
+      const q = "/api/upload?prepared=1&show=" + last + (col ? "&collection=" + encodeURIComponent(col) : "")
+        + "&recipe=" + encodeURIComponent(JSON.stringify(recipeOf(it)))
+        + (it.replaces ? "&replace=" + encodeURIComponent(it.replaces) : "");
+      const r = await api(q, {method: "POST", body: blob});
+      if (!it.fromBox && r.id) {
+        try { await fetch("/api/original?id=" + encodeURIComponent(r.id), {method: "POST", body: await sourceJpeg(it)}); }
+        catch (e) { toast(it.name + ": hung, but the original wasn't kept", true); }
+      }
       it.done = true; ok++; renderQueue();
     } catch (e) { toast(it.name + ": " + e.message, true); }
   }
-  const col = $("#ed-col").value;
+  const col = $("#ed-col").value, reframing = items.some(it => it.replaces), backTo = tab;
   closeEditor();
-  if (ok) toast("Hung " + plural(ok, "photo"));
-  tab = col ? "c:" + col : "mine";
+  if (ok) toast((reframing ? "Reframed " : "Hung ") + plural(ok, "photo"));
+  tab = col ? "c:" + col : reframing ? backTo : "mine";
   await refreshLibrary(); refreshStatus();
 };
 
