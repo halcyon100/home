@@ -65,7 +65,7 @@ def _ha_option(key, default):
         return default
 
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 TV_IP = os.environ.get("FRAME_IP") or _ha_option("tv_ip", "192.168.0.60")
 PORT = int(os.environ.get("FRAME_PORT", "8800"))
 WATCHDOG_EVERY = 60  # seconds
@@ -577,7 +577,8 @@ def publish_state(power=None) -> None:
         return
     try:
         power = power or TVC.power()
-        c.publish(BASE + "/display/state", "ON" if power == "on" else "OFF", retain=True)
+        on = power == "on" and not STATE.get("asleep")
+        c.publish(BASE + "/display/state", "ON" if on else "OFF", retain=True)
         c.publish(BASE + "/asleep/state", "ON" if STATE.get("asleep") else "OFF", retain=True)
     except Exception as e:
         log.info("MQTT publish failed: %s", e)
