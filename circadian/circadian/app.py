@@ -12,9 +12,9 @@ import aiohttp
 from astral import LocationInfo
 from astral.sun import sun as astral_sun
 
-from engine import OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
+from engine import KEEP_OFF, OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.2.3"
+APP_VERSION = "0.2.4"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -227,10 +227,18 @@ class Circadian:
         if not ctx or self.ov.ours(ctx) or self._from_me(ev.get("context")):
             return
         expanded = self._expand(ents)
-        self.calls[ctx] = {"bare": bare, "entities": expanded, "at": self.now(),
-                          "transition": sd.get("transition")}
+        prev = self.calls.get(ctx)
+        if prev is not None:
+            # a light group forwarding to its members reuses the same context:
+            # the members were reached through the group, not asked for directly
+            prev["entities"] |= expanded
+        else:
+            self.calls[ctx] = {"bare": bare, "entities": expanded, "direct": set(ents),
+                              "at": self.now(), "transition": sd.get("transition")}
         for e in expanded:
             self.recent_call_by_entity[e] = self.calls[ctx]
+        if prev is not None:
+            return
         if len(self.calls) > 500:
             for c in sorted(self.calls, key=lambda c: self.calls[c]["at"])[:250]:
                 del self.calls[c]
@@ -271,6 +279,12 @@ class Circadian:
         if action == "held":
             log.info("%s: held (%s)", e, self.ov.track(e).held_reason)
         elif action == "snap":
+            tgt = self.schedule.target_at(e, self.vnow())
+            if (tgt is not None and tgt.kind == KEEP_OFF and call is not None
+                    and e not in call.get("direct", set())):
+                log.info("%s: kept off (turned on with the whole room)", e)
+                asyncio.get_running_loop().create_task(self.call("light", "turn_off", e, {"transition": 1}))
+                return
             tr = (call or {}).get("transition")
             tr = float(tr) if isinstance(tr, (int, float)) and tr > 0 else 1
             asyncio.get_running_loop().create_task(self.apply(e, transition=tr, why="turned on"))
@@ -355,7 +369,7 @@ class Circadian:
             if not due:
                 continue
             for e, tgt in k.lights.items():
-                if tgt.kind == OFF:
+                if tgt.kind in (OFF, KEEP_OFF):
                     continue
                 tr = self.ov.track(e)
                 key = (today, k.name)
