@@ -14,7 +14,7 @@ from astral.sun import sun as astral_sun
 
 from engine import OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.1.2"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -131,6 +131,7 @@ class Circadian:
             self.my_user = None
         for st in await self.ha.send({"type": "get_states"}):
             self.states[st["entity_id"]] = st
+        self.ov.grace_until = datetime.now(self.tz) + timedelta(seconds=self.interval + 60)
         await self.ha.subscribe("state_changed", self.on_state_changed)
         await self.ha.subscribe("call_service", self.on_call_service)
         managed = sorted(self.schedule.entities())

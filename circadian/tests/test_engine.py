@@ -192,3 +192,11 @@ def test_overlapping_fades_not_a_person():
     a = ov.on_state("light.c", "on", "on", {"brightness": 104, "color_mode": "color_temp",
                                             "color_temp_kelvin": 3760}, "bridge", now + timedelta(seconds=125), None)
     assert a == "none"
+
+
+def test_restart_grace():
+    ov = Overrides()
+    now = at(7, 33)
+    ov.grace_until = now + timedelta(minutes=3)
+    assert ov.on_state("light.f", "on", "on", {"brightness": 30}, "bridge", now, None) == "none"
+    assert ov.on_state("light.f", "on", "on", {"brightness": 30}, "bridge", now + timedelta(minutes=4), None) == "held"

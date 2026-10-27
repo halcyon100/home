@@ -198,6 +198,7 @@ class Overrides:
     def __init__(self):
         self.tracks: dict[str, LightTrack] = {}
         self.our_contexts: dict[str, datetime] = {}
+        self.grace_until: datetime | None = None   # after a restart, late reports of old fades aren't people
 
     def track(self, e: str) -> LightTrack:
         return self.tracks.setdefault(e, LightTrack())
@@ -288,6 +289,8 @@ class Overrides:
         # No HA command behind it: a bridge report or a physical control.
         # Only treat it as a person if it's outside what our own fade explains.
         if self._within_expected(t, attrs):
+            return "none"
+        if not t.recent and self.grace_until and now < self.grace_until:
             return "none"
         t.held, t.held_reason = True, f"changed at the device: {t.mismatch}"
         return "held"
