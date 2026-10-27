@@ -1,0 +1,31 @@
+name: Circadian
+version: "0.1.0"
+slug: circadian
+description: Glides lights between hand-tuned keyframes through the day, with a sun-gated morning wake. Manual changes always win.
+url: https://github.com/halcyon100/home/tree/main/circadian
+arch:
+  - amd64
+  - aarch64
+init: false
+homeassistant_api: true
+startup: application
+boot: auto
+options:
+  shadow: true
+  interval_seconds: 120
+  enable_entity: input_boolean.circadian
+  morning_reset: "07:00"
+  keyframes: []
+schema:
+  shadow: bool
+  interval_seconds: int(30,600)
+  enable_entity: str
+  morning_reset: match(^\d{1,2}:\d{2}$)
+  keyframes:
+    - name: str
+      at: str
+      step: bool?
+      wake: bool?
+      wake_if_sunrise_after: str?
+      lights:
+        - str
