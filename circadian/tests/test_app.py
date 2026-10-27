@@ -245,3 +245,19 @@ async def test_wake_word_on_light_morning(aiohttp_server):
     await asyncio.sleep(0.05)
     assert "light.cab" in [x[2] for x in fake.calls]
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_quiet_when_occupied(aiohttp_server):
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(20, 0), TZ))
+    opts = dict(options(), quiet_when_occupied=["light.cab binary_sensor.kitchen"])
+    fake, c, ha, reader = await boot(aiohttp_server, opts, clock)
+    c.states["binary_sensor.kitchen"] = {"entity_id": "binary_sensor.kitchen", "state": "on", "attributes": {}}
+    await c.tick()
+    await asyncio.sleep(0.05)
+    assert "light.cab" not in [x[2] for x in fake.calls]
+    c.states["binary_sensor.kitchen"]["state"] = "off"
+    await c.tick()
+    await asyncio.sleep(0.05)
+    assert "light.cab" in [x[2] for x in fake.calls]
+    reader.cancel(); await ha.close()

@@ -14,7 +14,7 @@ from astral.sun import sun as astral_sun
 
 from engine import OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -115,6 +115,11 @@ class Circadian:
         self.early_wake = None      # (start, shift, catch-up end)
         self.force_wake = False
         self.catch_up = opts.get("early_wake_catch_up", "12:00")
+        # Lutron dims in visible 1% steps, so some lights only move while nobody's there.
+        self.quiet = {}
+        for spec in opts.get("quiet_when_occupied", []) or []:
+            light, sensor = spec.split()
+            self.quiet[light] = sensor
 
     # -------------------------------------------------- setup
     async def start(self):
@@ -312,6 +317,9 @@ class Circadian:
         for e in sorted(self.schedule.entities()):
             if e.split(".")[0] != "light":
                 continue
+            sensor = self.quiet.get(e)
+            if sensor and (self.states.get(sensor) or {}).get("state") == "on":
+                continue  # someone's there: hold still, catch up once they leave
             try:
                 await self.apply(e, transition=self.interval, why="tick")
             except Exception as ex:
