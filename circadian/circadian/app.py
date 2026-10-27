@@ -14,7 +14,7 @@ from astral.sun import sun as astral_sun
 
 from engine import KEEP_OFF, OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.2.5"
+APP_VERSION = "0.2.6"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -107,7 +107,7 @@ class Circadian:
         self.morning_reset = opts.get("morning_reset", "07:00")
         self.keyframes = keyframes_from_options(opts.get("keyframes", []))
         self.states: dict[str, dict] = {}
-        self.calls: dict[str, dict] = {}     # context id -> {"bare": bool, "entities": set}
+        self.calls: dict[str, dict] = {}     # context id -> {entity: call record}
         self.ov = Overrides()
         self.tz = None
         self.schedule: Schedule | None = None
@@ -251,20 +251,32 @@ class Circadian:
         if not ctx or self.ov.ours(ctx) or self._from_me(ev.get("context")):
             return
         expanded = self._expand(ents)
-        prev = self.calls.get(ctx)
-        if prev is not None:
-            # a light group forwarding to its members reuses the same context:
-            # the members were reached through the group, not asked for directly
-            prev["entities"] |= expanded
-        else:
-            self.calls[ctx] = {"bare": bare, "entities": expanded, "direct": set(ents),
-                              "at": self.now(), "transition": sd.get("transition")}
-        for e in expanded:
-            self.recent_call_by_entity[e] = self.calls[ctx]
-        if prev is not None:
+        per = self.calls.setdefault(ctx, {})
+        if set(ents) <= set(per):
+            # A light group forwarding to its members reuses the same context. The
+            # members were reached through the group and already have its record.
             return
+        if any(r["group"] for r in per.values()):
+            # Forwarded members we could not expand up front: they belong to the
+            # group's call, not a new direct request.
+            first = next(iter(per.values()))
+            first["entities"] |= expanded
+            for e in expanded:
+                per.setdefault(e, first)
+                self.recent_call_by_entity[e] = first
+            return
+        # One automation or script run makes several calls under one context, so
+        # each call keeps its own record for the lights it targets.
+        rec = {"bare": bare, "entities": expanded, "direct": set(ents), "at": self.now(),
+               "transition": sd.get("transition"),
+               "group": any(len(self._expand([x])) > 1 for x in ents)}
+        expanded = expanded - set(per)
+        for e in expanded:
+            per[e] = rec
+            self.recent_call_by_entity[e] = rec
         if len(self.calls) > 500:
-            for c in sorted(self.calls, key=lambda c: self.calls[c]["at"])[:250]:
+            age = lambda c: min((r["at"] for r in self.calls[c].values()), default=self.now())
+            for c in sorted(self.calls, key=age)[:250]:
                 del self.calls[c]
         # A plain "on" to a managed light that is already on gives it back to the curve.
         if bare and self.schedule:
@@ -289,8 +301,8 @@ class Circadian:
             return
         ctx = (new.get("context") or {}).get("id")
         call = None
-        if ctx in self.calls and e in self.calls[ctx]["entities"]:
-            call = self.calls[ctx]
+        if e in self.calls.get(ctx, {}):
+            call = self.calls[ctx][e]
         else:
             # Some integrations (Lutron) report the result of a command with a fresh
             # context, so match a command aimed at this light in the last few seconds.

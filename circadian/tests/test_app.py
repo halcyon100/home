@@ -347,3 +347,20 @@ async def test_reset_event_releases_and_reapplies(aiohttp_server):
     assert not c.ov.track("light.cab").held
     assert "light.cab" in [x[2] for x in fake.calls]
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_second_call_in_one_automation_run_is_its_own_request(aiohttp_server):
+    # An automation turns on one light, then sends a plain "on" to another light
+    # that is already on (dimmed and held). Both calls share the run's context.
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(20, 0), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, options(), clock)
+    c.ov.track("light.nook").held = True
+    for ents in (["light.cab"], ["light.nook"]):
+        await fake.event("call_service", {"domain": "light", "service": "turn_on",
+                                          "service_data": {"entity_id": ents, "transition": 5}},
+                         context={"id": "auto-run", "user_id": None})
+    await asyncio.sleep(0.05)
+    assert not c.ov.track("light.nook").held
+    assert any(x[2] == "light.nook" for x in fake.calls)
+    reader.cancel(); await ha.close()
