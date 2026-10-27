@@ -14,7 +14,7 @@ from astral.sun import sun as astral_sun
 
 from engine import OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.1.2"
+APP_VERSION = "0.1.3"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -186,7 +186,8 @@ class Circadian:
         if not ctx or self.ov.ours(ctx) or self._from_me(ev.get("context")):
             return
         expanded = self._expand(ents)
-        self.calls[ctx] = {"bare": bare, "entities": expanded, "at": self.now()}
+        self.calls[ctx] = {"bare": bare, "entities": expanded, "at": self.now(),
+                          "transition": sd.get("transition")}
         if len(self.calls) > 500:
             for c in sorted(self.calls, key=lambda c: self.calls[c]["at"])[:250]:
                 del self.calls[c]
@@ -221,7 +222,9 @@ class Circadian:
         if action == "held":
             log.info("%s: held (%s)", e, self.ov.track(e).held_reason)
         elif action == "snap":
-            asyncio.get_running_loop().create_task(self.apply(e, transition=1, why="turned on"))
+            tr = (call or {}).get("transition")
+            tr = float(tr) if isinstance(tr, (int, float)) and tr > 0 else 1
+            asyncio.get_running_loop().create_task(self.apply(e, transition=tr, why="turned on"))
 
     # -------------------------------------------------- commands
     async def call(self, domain: str, service: str, entity: str, data: dict | None = None):
