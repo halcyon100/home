@@ -8,3 +8,4 @@ Add this repository in Home Assistant under **Settings → Apps → ⋮ → Repo
 | App | What it does |
 |---|---|
 | [Frame](frame/) | Samsung Frame controller: Art Mode watchdog, photo hanging, collections, brightness schedule |
+| [Circadian](circadian/) | Glides lights between hand-tuned keyframes through the day, with a sun-gated morning wake; manual changes win |
