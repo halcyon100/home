@@ -335,3 +335,15 @@ async def test_keepoff_room_on_vs_direct(aiohttp_server):
     await asyncio.sleep(0.05)
     assert not any(x[1] == "turn_off" for x in fake.calls)
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_reset_event_releases_and_reapplies(aiohttp_server):
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(20, 0), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, options(), clock)
+    c.ov.track("light.cab").held = True
+    await fake.event("circadian_reset", {})
+    await asyncio.sleep(0.1)
+    assert not c.ov.track("light.cab").held
+    assert "light.cab" in [x[2] for x in fake.calls]
+    reader.cancel(); await ha.close()

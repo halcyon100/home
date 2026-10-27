@@ -14,7 +14,7 @@ from astral.sun import sun as astral_sun
 
 from engine import KEEP_OFF, OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.2.4"
+APP_VERSION = "0.2.5"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -147,6 +147,7 @@ class Circadian:
         await self.ha.subscribe("state_changed", self.on_state_changed)
         await self.ha.subscribe("call_service", self.on_call_service)
         await self.ha.subscribe("circadian_wake", self.on_wake_event)
+        await self.ha.subscribe("circadian_reset", self.on_reset_event)
         managed = sorted(self.schedule.entities())
         log.info("Circadian %s started: %d keyframes, %d entities, interval %ss, %s",
                  APP_VERSION, len(self.keyframes), len(managed), self.interval,
@@ -173,6 +174,29 @@ class Circadian:
             self.early_wake = None if now >= end else self.early_wake
             return now
         return now + shift * ((end - now) / (end - t0))
+
+    def on_reset_event(self, ev):
+        """'Natural light': release every hold and put every lit light back on the schedule."""
+        self.ov.release_all()
+        log.info("Reset requested: all holds released, back to the schedule")
+        asyncio.get_running_loop().create_task(self.reset_all())
+
+    async def reset_all(self):
+        if not self.enabled():
+            return
+        now = self.vnow()
+        for e in sorted(self.schedule.entities()):
+            if e.split(".")[0] != "light" or (self.states.get(e) or {}).get("state") != "on":
+                continue
+            tgt = self.schedule.target_at(e, now)
+            try:
+                if tgt is not None and tgt.kind == KEEP_OFF:
+                    log.info("%s: off (kept off at this time)", e)
+                    await self.call("light", "turn_off", e, {"transition": 3})
+                else:
+                    await self.apply(e, transition=3, why="reset")
+            except Exception as ex:
+                log.warning("%s: reset failed: %s", e, ex)
 
     def on_wake_event(self, ev):
         now = self.now()
