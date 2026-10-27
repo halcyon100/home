@@ -180,9 +180,11 @@ class LightTrack:
     cmd_transition: float = 0
     user_off_day: date | None = None
     woken: set = field(default_factory=set)   # (day, keyframe name)
+    recent: list = field(default_factory=list)  # [(at, b_from, b_to, k_from, k_to)] last few commands
+    mismatch: str = ""
 
 
-BRIGHT_TOL = 4      # of 255
+BRIGHT_TOL = 6      # of 255 (Hue rounding + fades that overlap the next step)
 KELVIN_TOL = 150
 
 
@@ -210,6 +212,8 @@ class Overrides:
         t.cmd_kelvin_from = from_k
         t.cmd_at = now
         t.cmd_transition = transition
+        t.recent = [r for r in t.recent if (now - r[0]).total_seconds() < 900][-2:]
+        t.recent.append((now, from_b, t.cmd_to, from_k, kelvin))
         if ctx:
             self.our_contexts[ctx] = now
         cutoff = now - timedelta(minutes=30)
@@ -220,22 +224,31 @@ class Overrides:
         return bool(ctx) and ctx in self.our_contexts
 
     def _within_expected(self, t: LightTrack, attrs: dict) -> bool:
-        if t.cmd_to is None:
+        """Is this reported state explained by our own recent fades?
+
+        Uses the endpoints of the last few commands, because a new step can start
+        before the bridge reports where the previous fade ended."""
+        if t.cmd_to is None or not t.recent:
+            t.mismatch = "no recent command"
             return False
+        bs = [v for r in t.recent for v in (r[1], r[2]) if v is not None]
+        ks = [v for r in t.recent for v in (r[3], r[4]) if v]
         b = attrs.get("brightness")
-        if b is not None:
-            lo = min(t.cmd_to, t.cmd_from if t.cmd_from is not None else t.cmd_to) - BRIGHT_TOL
-            hi = max(t.cmd_to, t.cmd_from if t.cmd_from is not None else t.cmd_to) + BRIGHT_TOL
+        if b is not None and bs:
+            lo, hi = min(bs) - BRIGHT_TOL, max(bs) + BRIGHT_TOL
             if not lo <= b <= hi:
+                t.mismatch = f"brightness {b} outside {lo}-{hi}"
                 return False
-        if t.cmd_kelvin and attrs.get("color_mode") == "color_temp":
+        if ks and attrs.get("color_mode") == "color_temp":
             k = attrs.get("color_temp_kelvin")
             if k is not None:
-                ref = t.cmd_kelvin_from or t.cmd_kelvin
-                if not min(ref, t.cmd_kelvin) - KELVIN_TOL <= k <= max(ref, t.cmd_kelvin) + KELVIN_TOL:
+                lo, hi = min(ks) - KELVIN_TOL, max(ks) + KELVIN_TOL
+                if not lo <= k <= hi:
+                    t.mismatch = f"kelvin {k} outside {lo}-{hi}"
                     return False
         # Color reported as xy/hs for a light we drove by kelvin is treated as a
         # representation change, not a person (lesson from Adaptive Lighting #1619).
+        t.mismatch = ""
         return True
 
     def on_state(self, e: str, old: str | None, new: str, attrs: dict, ctx: str | None,
@@ -276,7 +289,7 @@ class Overrides:
         # Only treat it as a person if it's outside what our own fade explains.
         if self._within_expected(t, attrs):
             return "none"
-        t.held, t.held_reason = True, "changed at the device"
+        t.held, t.held_reason = True, f"changed at the device: {t.mismatch}"
         return "held"
 
     def release_all(self):

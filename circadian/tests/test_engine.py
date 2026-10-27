@@ -181,3 +181,14 @@ def test_physical_change_outside_band_held():
     now = at(20, 0)
     ov.note_command("light.chand", None, now, 100, 30, None, 120)
     assert ov.on_state("light.chand", "on", "on", {"brightness": 240}, "wall", now, None) == "held"
+
+
+def test_overlapping_fades_not_a_person():
+    ov = Overrides()
+    now = at(7, 20)
+    ov.note_command("light.c", None, now, 100, 45, 3800, 120, from_k=3700)          # 100 -> 115
+    ov.note_command("light.c", None, now + timedelta(seconds=120), 115, 47, 3900, 120, from_k=3800)
+    # bridge reports where the first fade really ended (slightly short), after the second started
+    a = ov.on_state("light.c", "on", "on", {"brightness": 104, "color_mode": "color_temp",
+                                            "color_temp_kelvin": 3760}, "bridge", now + timedelta(seconds=125), None)
+    assert a == "none"
