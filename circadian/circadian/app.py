@@ -14,7 +14,7 @@ from astral.sun import sun as astral_sun
 
 from engine import OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.1.3"
+APP_VERSION = "0.2.0"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -112,6 +112,9 @@ class Circadian:
         self.schedule: Schedule | None = None
         self.last_reset_day = None
         self.my_user = None
+        self.early_wake = None      # (start, shift, catch-up end)
+        self.force_wake = False
+        self.catch_up = opts.get("early_wake_catch_up", "12:00")
 
     # -------------------------------------------------- setup
     async def start(self):
@@ -134,6 +137,7 @@ class Circadian:
         self.ov.grace_until = datetime.now(self.tz) + timedelta(seconds=self.interval + 60)
         await self.ha.subscribe("state_changed", self.on_state_changed)
         await self.ha.subscribe("call_service", self.on_call_service)
+        await self.ha.subscribe("circadian_wake", self.on_wake_event)
         managed = sorted(self.schedule.entities())
         log.info("Circadian %s started: %d keyframes, %d entities, interval %ss, %s",
                  APP_VERSION, len(self.keyframes), len(managed), self.interval,
@@ -147,6 +151,34 @@ class Circadian:
 
     def now(self) -> datetime:
         return datetime.now(self.tz)
+
+    def vnow(self) -> datetime:
+        """Schedule time. After an early wake, the morning is stretched so it starts now
+        and catches back up to the real clock by `catch_up` (default noon)."""
+        now = self.now()
+        ew = self.early_wake
+        if not ew:
+            return now
+        t0, shift, end = ew
+        if now >= end or now < t0:
+            self.early_wake = None if now >= end else self.early_wake
+            return now
+        return now + shift * ((end - now) / (end - t0))
+
+    def on_wake_event(self, ev):
+        now = self.now()
+        h, m = (int(x) for x in self.morning_reset.split(":"))
+        seven = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        self.ov.release_all()
+        if now < seven:
+            ch, cm = (int(x) for x in self.catch_up.split(":"))
+            end = now.replace(hour=ch, minute=cm, second=0, microsecond=0)
+            self.early_wake = (now, seven - now, end)
+            log.info("Early wake: the morning starts now (%s early), catching up by %s",
+                     str(seven - now).split(".")[0], self.catch_up)
+        else:
+            log.info("Wake requested after %s: running the morning wake now", self.morning_reset)
+        self.force_wake = True
 
     def enabled(self) -> bool:
         st = self.states.get(self.enable_entity)
@@ -245,7 +277,7 @@ class Circadian:
         t = self.ov.track(e)
         if t.held:
             return
-        tgt = self.schedule.target_at(e, self.now())
+        tgt = self.schedule.target_at(e, self.vnow())
         if tgt is None or tgt.kind != "level":
             return
         attrs = st.get("attributes", {})
@@ -288,17 +320,26 @@ class Circadian:
     async def wake_check(self):
         if not self.enabled():
             return
-        now = self.now()
+        now = self.vnow()
         today = now.date()
-        for t, k in self.schedule.wake_events(today):
-            if not t <= now < t + WAKE_WINDOW:
+        events = self.schedule.wake_events(today)
+        force = self.force_wake
+        if force:
+            self.force_wake = False
+            if not events:  # light mornings: the sun gate skipped them, but you asked
+                events = [(t, k) for t, k in self.schedule.wake_events(today, ignore_gate=True)]
+        for t, k in events:
+            due = t <= now < t + WAKE_WINDOW
+            if force and not due and t <= now:
+                due = True   # asked to wake: bring on everything up to now
+            if not due:
                 continue
             for e, tgt in k.lights.items():
                 if tgt.kind == OFF:
                     continue
                 tr = self.ov.track(e)
                 key = (today, k.name)
-                if key in tr.woken or tr.user_off_day == today:
+                if key in tr.woken or (tr.user_off_day == today and not force):
                     continue
                 st = (self.states.get(e) or {}).get("state")
                 tr.woken.add(key)

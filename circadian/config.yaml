@@ -1,5 +1,5 @@
 name: Circadian
-version: "0.1.3"
+version: "0.2.0"
 slug: circadian
 description: Glides lights between hand-tuned keyframes through the day, with a sun-gated morning wake. Manual changes always win.
 url: https://github.com/halcyon100/home/tree/main/circadian
@@ -15,12 +15,14 @@ options:
   interval_seconds: 120
   enable_entity: input_boolean.circadian
   morning_reset: "07:00"
+  early_wake_catch_up: "12:00"
   keyframes: []
 schema:
   shadow: bool
   interval_seconds: int(30,600)
   enable_entity: str
   morning_reset: match(^\d{1,2}:\d{2}$)
+  early_wake_catch_up: match(^\d{1,2}:\d{2}$)?
   keyframes:
     - name: str
       at: str

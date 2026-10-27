@@ -203,3 +203,45 @@ async def test_no_wake_after_user_turned_it_off(aiohttp_server):
     await c.wake_check()
     assert "light.island" not in [x[2] for x in fake.calls]
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_early_wake_runs_morning_now(aiohttp_server):
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(5, 30), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, options(), clock)
+    fake.states["light.cab"]["state"] = "off"
+    c.states["light.cab"]["state"] = "off"
+    await fake.event("circadian_wake", {})
+    await asyncio.sleep(0.05)
+    assert c.vnow().hour == 7 and c.vnow().minute == 0
+    await c.wake_check()
+    await asyncio.sleep(0.05)
+    targets = [x[2] for x in fake.calls]
+    assert "light.cab" in targets and "light.island" not in targets
+    # half way to noon, the schedule has caught up partially
+    clock.dt = datetime.combine(date(2026, 12, 1), time(8, 45), TZ)
+    v = c.vnow()
+    assert datetime.combine(date(2026, 12, 1), time(8, 45), TZ) < v < datetime.combine(date(2026, 12, 1), time(12, 0), TZ)
+    clock.dt = datetime.combine(date(2026, 12, 1), time(12, 0), TZ)
+    assert c.vnow() == clock.dt
+    reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_wake_word_on_light_morning(aiohttp_server):
+    # summer: the sun gate skips the automatic wake, but asking still works
+    from engine import Schedule
+    clock = Clock(datetime.combine(date(2026, 6, 21), time(7, 40), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, options(), clock)
+    c.schedule = Schedule(c.keyframes, lambda d: (datetime.combine(d, time(5, 15), TZ),
+                                                   datetime.combine(d, time(20, 30), TZ)), TZ)
+    fake.states["light.cab"]["state"] = "off"
+    c.states["light.cab"]["state"] = "off"
+    await c.wake_check()
+    assert fake.calls == []
+    await fake.event("circadian_wake", {})
+    await asyncio.sleep(0.05)
+    await c.wake_check()
+    await asyncio.sleep(0.05)
+    assert "light.cab" in [x[2] for x in fake.calls]
+    reader.cancel(); await ha.close()

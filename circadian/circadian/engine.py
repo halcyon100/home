@@ -153,14 +153,15 @@ class Schedule:
             k = pt.kelvin or nt.kelvin
         return Target(round(b, 1), k, "level", pt.via)
 
-    def wake_events(self, day: date):
+    def wake_events(self, day: date, ignore_gate: bool = False):
         """[(time, keyframe)] for wake keyframes whose gate passes on this day."""
         out = []
         sunrise = self.sun(day)[0]
         for k in self.keyframes:
             if not k.wake:
                 continue
-            if k.wake_if_sunrise_after and sunrise.timetz().replace(tzinfo=None) <= k.wake_if_sunrise_after:
+            if (not ignore_gate and k.wake_if_sunrise_after
+                    and sunrise.timetz().replace(tzinfo=None) <= k.wake_if_sunrise_after):
                 continue
             out.append((resolve(k.at, day, self.sun, self.tz), k))
         return sorted(out, key=lambda e: e[0])
