@@ -14,12 +14,13 @@ from astral.sun import sun as astral_sun
 
 from engine import OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.2.2"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
 MIN_STEP_PCT = 1.0                    # skip changes smaller than this
 MIN_STEP_K = 25
+CALL_MATCH_SECONDS = 6           # a command's effect can be reported this long after it
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -113,6 +114,7 @@ class Circadian:
         self.last_reset_day = None
         self.my_user = None
         self.early_wake = None      # (start, shift, catch-up end)
+        self.recent_call_by_entity: dict[str, dict] = {}
         self.force_wake = False
         self.catch_up = opts.get("early_wake_catch_up", "12:00")
         # Lutron dims in visible 1% steps, so some lights only move while nobody's there.
@@ -225,6 +227,8 @@ class Circadian:
         expanded = self._expand(ents)
         self.calls[ctx] = {"bare": bare, "entities": expanded, "at": self.now(),
                           "transition": sd.get("transition")}
+        for e in expanded:
+            self.recent_call_by_entity[e] = self.calls[ctx]
         if len(self.calls) > 500:
             for c in sorted(self.calls, key=lambda c: self.calls[c]["at"])[:250]:
                 del self.calls[c]
@@ -253,6 +257,12 @@ class Circadian:
         call = None
         if ctx in self.calls and e in self.calls[ctx]["entities"]:
             call = self.calls[ctx]
+        else:
+            # Some integrations (Lutron) report the result of a command with a fresh
+            # context, so match a command aimed at this light in the last few seconds.
+            rc = self.recent_call_by_entity.get(e)
+            if rc and (self.now() - rc["at"]).total_seconds() <= CALL_MATCH_SECONDS:
+                call = rc
         action = self.ov.on_state(e, (old or {}).get("state"), new.get("state"),
                                   new.get("attributes", {}), ctx, self.now(), call,
                                   ours=self._from_me(new.get("context")))

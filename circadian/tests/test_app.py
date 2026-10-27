@@ -261,3 +261,19 @@ async def test_quiet_when_occupied(aiohttp_server):
     await asyncio.sleep(0.05)
     assert "light.cab" in [x[2] for x in fake.calls]
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_lutron_fresh_context_matched_to_recent_command(aiohttp_server):
+    # "Alexa, kitchen brighter" turns on an off Lutron light; Lutron reports it with a new context.
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(7, 57), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, options(), clock)
+    await fake.event("call_service", {"domain": "light", "service": "turn_on",
+                                      "service_data": {"entity_id": "light.chand", "brightness": 160}},
+                     context={"id": "alexa-ctx", "user_id": "cloud"})
+    await asyncio.sleep(0.02)
+    await fake.person_sets("light.chand", brightness=160)    # arrives with an unrelated context
+    await asyncio.sleep(0.05)
+    assert c.ov.track("light.chand").held
+    assert "light.chand" not in [x[2] for x in fake.calls]   # no snap back to the curve
+    reader.cancel(); await ha.close()
