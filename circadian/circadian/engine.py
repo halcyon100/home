@@ -12,6 +12,7 @@ from typing import Callable
 
 OFF = "off"   # light should not be on yet (only meaningful for wake)
 ON = "on"     # power entity (e.g. a switch) to turn on at wake
+KEEP_OFF = "keepoff"  # if a room-wide "on" turns this light on, turn it back off (direct requests still win)
 
 _TIME_RE = re.compile(r"^\s*(sunrise|sunset|\d{1,2}:\d{2})\s*(?:([+-])\s*(\d{1,2}):(\d{2}))?\s*$")
 
@@ -54,6 +55,8 @@ def parse_light(spec: str) -> tuple[str, Target]:
         return entity, Target(None, None, OFF, via)
     if val == ON:
         return entity, Target(None, None, ON, via)
+    if val == KEEP_OFF:
+        return entity, Target(None, None, KEEP_OFF, via)
     b = float(val)
     if not 0 < b <= 100:
         raise ValueError(f"brightness out of range in {spec!r}")

@@ -299,3 +299,39 @@ async def test_holds_survive_restart(aiohttp_server, tmp_path, monkeypatch):
     c3.load_state()
     assert not c3.ov.track("light.cab").held
     reader2.cancel(); await ha2.close(); reader3.cancel(); await ha3.close()
+
+
+@pytest.mark.asyncio
+async def test_keepoff_room_on_vs_direct(aiohttp_server):
+    from engine import keyframes_from_options, Schedule
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(8, 0), TZ))
+    opts = dict(options(), keyframes=OPTS + [{"name": "km", "at": "07:00", "step": True,
+                                              "lights": ["light.chand keepoff"]}])
+    fake, c, ha, reader = await boot(aiohttp_server, opts, clock)
+    c.states["light.kitchen_group"] = {"entity_id": "light.kitchen_group", "state": "on",
+                                       "attributes": {"entity_id": ["light.chand", "light.cab"]}}
+    # "Alexa, kitchen on": group call, then the group forwards to members with the same context
+    for ents in (["light.kitchen_group"], ["light.chand", "light.cab"]):
+        await fake.event("call_service", {"domain": "light", "service": "turn_on",
+                                          "service_data": {"entity_id": ents}},
+                         context={"id": "room-ctx", "user_id": "cloud"})
+    await asyncio.sleep(0.02)
+    old = dict(fake.states["light.chand"])
+    new = dict(old, state="on", attributes=dict(old["attributes"], brightness=200),
+               context={"id": "room-ctx", "user_id": "cloud"})
+    fake.states["light.chand"] = new
+    await fake.event("state_changed", {"entity_id": "light.chand", "old_state": old, "new_state": new})
+    await asyncio.sleep(0.05)
+    assert ("light", "turn_off", "light.chand", {"transition": 1}) in fake.calls
+    # "Alexa, chandelier on" (direct) is respected
+    fake.calls.clear()
+    await fake.event("call_service", {"domain": "light", "service": "turn_on",
+                                      "service_data": {"entity_id": "light.chand"}},
+                     context={"id": "direct-ctx", "user_id": "cloud"})
+    await asyncio.sleep(0.02)
+    old = dict(fake.states["light.chand"], state="off")
+    new = dict(old, state="on", context={"id": "direct-ctx", "user_id": "cloud"})
+    await fake.event("state_changed", {"entity_id": "light.chand", "old_state": old, "new_state": new})
+    await asyncio.sleep(0.05)
+    assert not any(x[1] == "turn_off" for x in fake.calls)
+    reader.cancel(); await ha.close()
