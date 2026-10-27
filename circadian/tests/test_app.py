@@ -277,3 +277,25 @@ async def test_lutron_fresh_context_matched_to_recent_command(aiohttp_server):
     assert c.ov.track("light.chand").held
     assert "light.chand" not in [x[2] for x in fake.calls]   # no snap back to the curve
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_holds_survive_restart(aiohttp_server, tmp_path, monkeypatch):
+    monkeypatch.setenv("CIRCADIAN_STATE", str(tmp_path / "state.json"))
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(20, 0), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, options(), clock)
+    c.ov.track("light.cab").held, c.ov.track("light.cab").held_reason = True, "set by a command"
+    c.save_state()
+    reader.cancel(); await ha.close()
+    fake2, c2, ha2, reader2 = await boot(aiohttp_server, options(), clock)
+    c2.load_state()
+    assert c2.ov.track("light.cab").held
+    await c2.tick()
+    await asyncio.sleep(0.05)
+    assert "light.cab" not in [x[2] for x in fake2.calls]
+    # after the next morning reset, an old hold isn't restored
+    clock.dt = datetime.combine(date(2026, 12, 2), time(7, 5), TZ)
+    fake3, c3, ha3, reader3 = await boot(aiohttp_server, options(), clock)
+    c3.load_state()
+    assert not c3.ov.track("light.cab").held
+    reader2.cancel(); await ha2.close(); reader3.cancel(); await ha3.close()

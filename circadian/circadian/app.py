@@ -14,7 +14,7 @@ from astral.sun import sun as astral_sun
 
 from engine import OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
 
-APP_VERSION = "0.2.2"
+APP_VERSION = "0.2.3"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -115,6 +115,8 @@ class Circadian:
         self.my_user = None
         self.early_wake = None      # (start, shift, catch-up end)
         self.recent_call_by_entity: dict[str, dict] = {}
+        self.state_path = os.environ.get("CIRCADIAN_STATE", "/data/circadian_state.json")
+        self._saved = None
         self.force_wake = False
         self.catch_up = opts.get("early_wake_catch_up", "12:00")
         # Lutron dims in visible 1% steps, so some lights only move while nobody's there.
@@ -394,8 +396,64 @@ class Circadian:
                 log.info("Morning reset: all holds released")
             self.last_reset_day = now.date()
 
+    # -------------------------------------------------- state across restarts
+    def _last_reset(self, now: datetime) -> datetime:
+        h, m = (int(x) for x in self.morning_reset.split(":"))
+        r = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        return r if now >= r else r - timedelta(days=1)
+
+    def snapshot(self) -> dict:
+        tr = self.ov.tracks
+        return {
+            "held": {e: t.held_reason for e, t in tr.items() if t.held},
+            "woken": {e: [[d.isoformat(), n] for d, n in sorted(t.woken)] for e, t in tr.items() if t.woken},
+            "user_off": {e: t.user_off_day.isoformat() for e, t in tr.items() if t.user_off_day},
+        }
+
+    def save_state(self):
+        snap = self.snapshot()
+        if snap == self._saved:
+            return
+        try:
+            tmp = self.state_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(dict(snap, saved=self.now().isoformat()), f)
+            os.replace(tmp, self.state_path)
+            self._saved = snap
+        except OSError as ex:
+            log.warning("Could not save state: %s", ex)
+
+    def load_state(self):
+        try:
+            with open(self.state_path) as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return
+        now = self.now()
+        try:
+            saved = datetime.fromisoformat(data["saved"])
+        except (KeyError, ValueError):
+            return
+        today = now.date()
+        if saved >= self._last_reset(now):
+            for e, reason in data.get("held", {}).items():
+                t = self.ov.track(e)
+                t.held, t.held_reason = True, reason
+        for e, items in data.get("woken", {}).items():
+            for d, n in items:
+                if d == today.isoformat():
+                    self.ov.track(e).woken.add((today, n))
+        for e, d in data.get("user_off", {}).items():
+            if d == today.isoformat():
+                self.ov.track(e).user_off_day = today
+        n = sum(1 for t in self.ov.tracks.values() if t.held)
+        if n:
+            log.info("Restored %d held light(s) from before the restart", n)
+        self._saved = self.snapshot()
+
     async def run(self):
         await self.start()
+        self.load_state()
         last_tick = None
         while True:
             self.reset_check()
@@ -404,6 +462,7 @@ class Circadian:
             if last_tick is None or (now - last_tick).total_seconds() >= self.interval:
                 last_tick = now
                 await self.tick()
+            self.save_state()
             await asyncio.sleep(15)
 
 
