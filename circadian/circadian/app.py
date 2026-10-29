@@ -12,10 +12,10 @@ import aiohttp
 from astral import LocationInfo
 from astral.sun import sun as astral_sun
 
-from engine import (KEEP_OFF, OFF, ON, Overrides, Schedule, daylight_zones_from_options,
+from engine import (KEEP_OFF, OFF, ON, SHUT, Overrides, Schedule, daylight_zones_from_options,
                     keyframes_from_options, pct_to_255)
 
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.3.2"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -500,10 +500,21 @@ class Circadian:
                     continue
                 tr = self.ov.track(e)
                 key = (today, k.name)
-                if key in tr.woken or (tr.user_off_day == today and not force):
+                # A morning wake respects someone having turned the light off today; an
+                # evening keyframe (no sunrise gate) runs every day regardless.
+                morning = k.wake_if_sunrise_after is not None
+                if key in tr.woken or (morning and tr.user_off_day == today and not force):
                     continue
                 st = (self.states.get(e) or {}).get("state")
                 tr.woken.add(key)
+                if tgt.kind == SHUT:
+                    if st == "on" and not tr.held:
+                        log.info("%s %s: off", k.name, e)
+                        try:
+                            await self.call("light", "turn_off", e, {"transition": 60})
+                        except Exception as ex:
+                            log.warning("%s %s: off failed: %s", k.name, e, ex)
+                    continue
                 if st == "on":
                     continue
                 z = self.zone_of.get(e)
