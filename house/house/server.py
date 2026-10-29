@@ -18,7 +18,7 @@ from aiohttp import web
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -205,7 +205,8 @@ class House:
         return out[-40:][::-1]
 
     async def state(self):
-        states, day, log_rows = await asyncio.gather(self.ha_get("/states"), self.circadian_day(), self.logbook())
+        states, day, log_rows, cfg = await asyncio.gather(self.ha_get("/states"), self.circadian_day(), self.logbook(),
+                                                          self.ha_get("/config"))
         by = {s["entity_id"]: s for s in states}
 
         def pick(e):
@@ -229,6 +230,7 @@ class House:
             "sun": {"next_rising": sun.get("next_rising"), "next_setting": sun.get("next_setting"),
                     "elevation": sun.get("elevation"), "up": by.get("sun.sun", {}).get("state") == "above_horizon"},
             "circadian": day,
+            "home": {"lat": cfg.get("latitude"), "lon": cfg.get("longitude")},
             "shortcuts": [dict(pick(s["entity"]) or {}, **s) for s in self.shortcuts],
             "shades": [x for x in (pick(e) for e in self.shades) if x],
             "motion": [x for x in (pick(e) for e in self.motion) if x],

@@ -29,12 +29,25 @@ button{font:inherit;color:inherit}
 
 /* The day, drawn */
 .day{position:relative;margin:clamp(20px,3vw,36px) 0 0;touch-action:pan-y;cursor:crosshair}
-.day svg{display:block;width:100%;height:clamp(170px,26vw,280px);overflow:visible}
+.day svg{display:block;width:100%;height:clamp(190px,28vw,300px);overflow:visible}
+.sundot{position:absolute;left:0;right:0;top:0;height:clamp(190px,28vw,300px);pointer-events:none;z-index:1}
+.sundot i{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:#FFD27A;box-shadow:0 0 0 1.5px var(--ink),0 0 14px 4px rgba(255,200,90,.45)}
+.sunmarks{position:absolute;inset:0 0 auto 0;height:0;z-index:1;pointer-events:none}
+.sm{position:absolute;top:8px;display:flex;align-items:center;gap:.4em;white-space:nowrap;font-size:var(--s-1);font-stretch:84%;color:var(--quiet);background:var(--ground);padding:.15em .4em}
+.sm b{font-weight:500;color:var(--ink);font-stretch:90%}
+.sm i{font-style:normal}
+.sm svg{width:20px;height:15px;color:var(--ink);flex:none}
+.sm.rise{margin-left:4px}
+.sm.set{margin-right:4px}
+.moon{display:inline-flex;align-items:center;gap:.45em}
+.moon svg{width:15px;height:15px;vertical-align:-2px}
+@media (max-width:520px){.sm i{display:none}}
 .axis{display:flex;justify-content:space-between;font-stretch:78%;font-size:var(--s-1);color:var(--quiet);margin-top:.5em}
 .axis span:nth-child(odd){visibility:visible}
 .legend{display:flex;flex-wrap:wrap;gap:.3em 1.4em;margin-top:.9em;font-size:var(--s-1);font-stretch:82%;color:var(--quiet)}
 .legend i{display:inline-block;width:18px;height:0;border-top:1.5px solid var(--ink);vertical-align:.3em;margin-right:.45em}
 .legend i.base{border-top:1px dashed var(--quiet)}
+.legend i.sunl{border-top:1.5px dotted var(--ink)}
 .legend i.sw{height:9px;border:0;background:linear-gradient(90deg,#ffb46b,#fff1e0,#dfe8ff);vertical-align:0}
 
 /* Lower field */
@@ -161,6 +174,8 @@ ol.log.big{font-size:var(--s0)}
   <header class="mast" id="mast"></header>
   <h1 class="say" id="say" aria-live="polite">Reading the house</h1>
   <figure class="day" id="day" aria-label="Today's light, brightness over the day, coloured by colour temperature">
+    <div class="sunmarks" id="sunmarks" aria-hidden="true"></div>
+    <div class="sundot" id="sundot" aria-hidden="true"></div>
     <svg id="g" viewBox="0 0 1000 300" preserveAspectRatio="none" role="img"></svg>
     <div class="axis" aria-hidden="true"><span>Midnight</span><span>3</span><span>6 am</span><span>9</span><span>Noon</span><span>3</span><span>6 pm</span><span>9</span><span>Midnight</span></div>
     <figcaption class="legend" id="legend"></figcaption>
@@ -236,7 +251,7 @@ function houseCurve(day, boosted){
 function draw(){
   const d = S.circadian, g = $("g");
   if (!d){ g.innerHTML=""; return; }
-  const W=1000,H=300,top=12,bot=288;
+  const W=1000,H=300,top=58,bot=288;   // the top band is the sun lane
   const d0 = new Date(d.day_start), span = 24*3600e3;
   const X = s => (new Date(s)-d0)/span*W;
   const base = houseCurve(d,false), eff = houseCurve(d,true);
@@ -259,9 +274,57 @@ function draw(){
     ${ticks}
     <line x1="${nowX.toFixed(1)}" x2="${nowX.toFixed(1)}" y1="0" y2="${bot}" stroke="var(--ink)" stroke-width="1" vector-effect="non-scaling-stroke"/>
     ${scrub!=null?`<line x1="${sx.toFixed(1)}" x2="${sx.toFixed(1)}" y1="0" y2="${bot}" stroke="var(--quiet)" stroke-width="1" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>`:""}`;
-  $("legend").innerHTML = `<span><i class="sw"></i>Colour of the light</span><span><i></i>Brightness${d.boost.on?" with Bright House":""}</span>${differs?`<span><i class="base"></i>The usual day</span>`:""}<span>Shaded: sun down</span>`;
+  $("legend").innerHTML = `<span><i class="sw"></i>Colour of the light</span><span><i></i>Brightness${d.boost.on?" with Bright House":""}</span>${differs?`<span><i class="base"></i>The usual day</span>`:""}${S.home&&S.home.lat!=null?`<span><i class="sunl"></i>The sun's height</span>`:""}<span>Shaded: sun down</span>`;
+  // The sun's height through the day, on the same clock: a fine line, and where it is now.
+  let sunline = "";
+  if (S.home && S.home.lat != null){
+    const pts = [];
+    for (let m=0;m<=1440;m+=10){ const ts = new Date(d0.getTime()+m*6e4); pts.push([m/1440*W, sunElev(ts, S.home.lat, S.home.lon)]); }
+    const ys = e => bot - Math.max(-6, e)/90*(bot-top) ;
+    const above = pts.filter(p=>p[1]>-0.8);
+    sunline = `<path d="${above.map((p,i)=>`${i?"L":"M"}${p[0].toFixed(1)} ${ys(p[1]).toFixed(1)}`).join("")}" fill="none" stroke="var(--ink)" stroke-width="1" stroke-dasharray="1 3" stroke-linecap="round" vector-effect="non-scaling-stroke" opacity=".7"/>`;
+    const en = sunElev(new Date(d.now), S.home.lat, S.home.lon);
+    if (en > -0.8) sunEl.innerHTML = `<i style="left:${(nowX/W*100).toFixed(2)}%;top:${(ys(en)/H*100).toFixed(2)}%"></i>`; else sunEl.innerHTML = "";
+  }
+  g.insertAdjacentHTML("beforeend", sunline);
+  const pct = s => (X(s)/W*100).toFixed(2)+"%";
+  $("sunmarks").innerHTML =
+    `<span class="sm rise" style="left:${pct(d.sunrise)}">${SUN_UP}<b>${t(d.sunrise)}</b><i>Sunrise</i></span>`+
+    `<span class="sm set" style="right:calc(100% - ${pct(d.sunset)})"><i>Sunset</i><b>${t(d.sunset)}</b>${SUN_DOWN}</span>`;
   hero(eff, si, nowI);
 }
+const sunEl = document.getElementById("sundot");
+/* Solar elevation in degrees (NOAA's approximation; good to a fraction of a degree). */
+function sunElev(date, lat, lon){
+  const rad = Math.PI/180, jd = date.getTime()/864e5 + 2440587.5, T = (jd-2451545)/36525;
+  const L0 = (280.46646 + T*(36000.76983 + T*0.0003032)) % 360, M = 357.52911 + T*(35999.05029 - 0.0001537*T);
+  const C = Math.sin(M*rad)*(1.914602 - T*(0.004817+0.000014*T)) + Math.sin(2*M*rad)*(0.019993-0.000101*T) + Math.sin(3*M*rad)*0.000289;
+  const lam = L0 + C - 0.00569 - 0.00478*Math.sin((125.04-1934.136*T)*rad);
+  const eps = 23 + (26 + (21.448 - T*(46.815 + T*(0.00059 - T*0.001813)))/60)/60 + 0.00256*Math.cos((125.04-1934.136*T)*rad);
+  const dec = Math.asin(Math.sin(eps*rad)*Math.sin(lam*rad));
+  const y = Math.tan(eps*rad/2)**2, e = 0.016708634 - T*(0.000042037+0.0000001267*T);
+  const eqt = 4/rad*(y*Math.sin(2*L0*rad) - 2*e*Math.sin(M*rad) + 4*e*y*Math.sin(M*rad)*Math.cos(2*L0*rad) - .5*y*y*Math.sin(4*L0*rad) - 1.25*e*e*Math.sin(2*M*rad));
+  const mins = date.getUTCHours()*60 + date.getUTCMinutes() + date.getUTCSeconds()/60;
+  const ha = ((mins + eqt + 4*lon)/4 - 180)*rad;
+  return Math.asin(Math.sin(lat*rad)*Math.sin(dec) + Math.cos(lat*rad)*Math.cos(dec)*Math.cos(ha))/rad;
+}
+/* Moon phase from the mean synodic month, counted from the new moon of 6 Jan 2000 18:14 UTC. */
+function moon(date){
+  const syn = 29.530588853, age = (((date - Date.UTC(2000,0,6,18,14))/864e5) % syn + syn) % syn, f = age/syn;
+  const lit = (1 - Math.cos(2*Math.PI*f))/2;
+  const name = age < 1.0 || age > syn-1.0 ? "New moon" : Math.abs(age - syn/2) < 1.0 ? "Full moon" :
+    Math.abs(age - syn/4) < 1.0 ? "First quarter" : Math.abs(age - 3*syn/4) < 1.0 ? "Last quarter" :
+    f < .25 ? "Waxing crescent" : f < .5 ? "Waxing gibbous" : f < .75 ? "Waning gibbous" : "Waning crescent";
+  // Draw: lit limb on the right while waxing, left while waning; the terminator is an ellipse.
+  const r = 6.5, k = Math.cos(2*Math.PI*f), waxing = f < .5;
+  const sweepOuter = waxing ? 1 : 0, rx = Math.abs(k*r), sweepInner = (k > 0) === waxing ? 0 : 1;
+  const d = `M7.5 1 A${r} ${r} 0 0 ${sweepOuter} 7.5 14 A${rx.toFixed(2)} ${r} 0 0 ${sweepInner} 7.5 1Z`;
+  const svg = `<svg viewBox="0 0 15 15" aria-hidden="true"><circle cx="7.5" cy="7.5" r="${r}" fill="var(--quiet)"/>${lit>.02?`<path d="${d}" fill="#F6F1E4"/>`:""}<circle cx="7.5" cy="7.5" r="${r}" fill="none" stroke="var(--ink)" stroke-width=".9"/></svg>`;
+  return {name, pct: Math.round(lit*100), svg};
+}
+/* Sun on the horizon, with which way it's going */
+const SUN_UP = `<svg viewBox="0 0 22 16" aria-hidden="true"><path d="M3 13.5h16M6.5 13.5a4.5 4.5 0 0 1 9 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 6.5V1.6M8.6 3.8 11 1.4l2.4 2.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const SUN_DOWN = `<svg viewBox="0 0 22 16" aria-hidden="true"><path d="M3 13.5h16M6.5 13.5a4.5 4.5 0 0 1 9 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 1.4v4.9M8.6 4.1 11 6.5l2.4-2.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 function hero(eff, si, nowI){
   const d = S.circadian, p = eff[si];
@@ -293,8 +356,8 @@ function render(){
   const now = new Date(s.now);
   const date = new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric"}).format(now);
   const wx = s.weather ? `<span><b>${Math.round(s.weather.temperature)}${esc(s.weather.unit||"°")}</b> ${esc(({rainy:"rain",pouring:"heavy rain",cloudy:"cloudy",partlycloudy:"partly cloudy",sunny:"sun","clear-night":"clear",snowy:"snow",fog:"fog",windy:"wind",lightning:"storms","lightning-rainy":"storms"})[s.weather.state]||s.weather.state)}</span>` : "";
-  const sun = d ? `<span>Sunrise <b>${t(d.sunrise)}</b></span><span>Sunset <b>${t(d.sunset)}</b></span>` : "";
-  $("mast").innerHTML = `<span><b>${esc(date)}</b></span><span><b>${t(now)}</b></span>${wx}${sun}`;
+  const mo = moon(now);
+  $("mast").innerHTML = `<span><b>${esc(date)}</b></span><span><b>${t(now)}</b></span>${wx}<span class="moon" title="${mo.pct}% lit">${mo.svg}${esc(mo.name)}</span>`;
   draw();
 
   $("acts").innerHTML = s.shortcuts.map(c=>{
