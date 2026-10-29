@@ -18,7 +18,7 @@ from aiohttp import web
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.1.3"
+VERSION = "0.2.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -38,6 +38,10 @@ class House:
         self.shades = opts.get("shades", []) or []
         self.motion = opts.get("motion", []) or []
         self.activity = opts.get("activity", []) or []
+        self.exclude = set(opts.get("exclude", []) or [])
+        self.switches = list(opts.get("switches", []) or [])
+        self.floor_order = opts.get("floors", []) or []
+        self.device_ids: set[str] = set()
         self.session: aiohttp.ClientSession | None = None
 
     def hdr(self):
@@ -52,6 +56,57 @@ class House:
         async with self.session.post(f"{HA}/services/{domain}/{service}", headers=self.hdr(),
                                      data=json.dumps(data), timeout=aiohttp.ClientTimeout(total=10)) as r:
             r.raise_for_status()
+
+    async def template(self, tpl: str):
+        async with self.session.post(f"{HA}/template", headers=self.hdr(), data=json.dumps({"template": tpl}),
+                                     timeout=aiohttp.ClientTimeout(total=10)) as r:
+            r.raise_for_status()
+            return await r.text()
+
+    AREAS_TPL = ("{% set ns = namespace(o=[]) %}{% for f in floors() %}{% for a in floor_areas(f) %}"
+                 "{% for e in area_entities(a) %}{% if e.startswith('light.') or e.startswith('switch.') %}"
+                 "{% set ns.o = ns.o + [[f, floor_name(f), a, area_name(a), e]] %}{% endif %}"
+                 "{% endfor %}{% endfor %}{% endfor %}{{ ns.o | tojson }}")
+
+    async def devices(self):
+        rows, states = await asyncio.gather(self.template(self.AREAS_TPL), self.ha_get("/states"))
+        by = {s["entity_id"]: s for s in states}
+        floors: dict[str, dict] = {}
+        ids = set()
+        for fid, fname, aid, aname, e in json.loads(rows):
+            st = by.get(e)
+            if not st or e in self.exclude:
+                continue
+            a = st.get("attributes", {})
+            if isinstance(a.get("entity_id"), list):
+                continue          # light groups: the room already shows its lights
+            if e.startswith("switch.") and e not in self.switches:
+                continue          # most switches are settings, not things to switch
+            modes = a.get("supported_color_modes") or []
+            f = floors.setdefault(fid, {"id": fid, "name": fname, "areas": {}})
+            area = f["areas"].setdefault(aid, {"id": aid, "name": aname, "items": []})
+            area["items"].append({
+                "entity": e, "name": a.get("friendly_name", e), "state": st["state"],
+                "brightness": round(a["brightness"] / 2.55) if a.get("brightness") else None,
+                "dimmable": any(m != "onoff" for m in modes) and e.startswith("light."),
+                "kelvin": a.get("color_temp_kelvin")})
+            ids.add(e)
+        self.device_ids = ids
+        order = {f: i for i, f in enumerate(self.floor_order)}
+        out = []
+        for f in sorted(floors.values(), key=lambda f: order.get(f["id"], 99)):
+            areas = []
+            for ar in sorted(f["areas"].values(), key=lambda x: x["name"]):
+                ar["items"].sort(key=lambda x: x["name"])
+                areas.append(ar)
+            out.append({"id": f["id"], "name": f["name"], "areas": areas})
+
+        def cover(e):
+            st = by.get(e) or {}
+            a = st.get("attributes", {})
+            return {"entity": e, "name": a.get("friendly_name", e), "state": st.get("state"),
+                    "position": a.get("current_position")}
+        return {"floors": out, "shades": [cover(e) for e in self.shades if e in by]}
 
     async def circadian_day(self):
         try:
@@ -150,6 +205,18 @@ class House:
                 raise web.HTTPBadRequest(text="unsupported")
         elif entity in self.shades and op in ("open", "close", "stop"):
             await self.ha_call("cover", f"{op}_cover", {"entity_id": entity})
+        elif domain in ("light", "switch") and entity not in self.exclude:
+            if entity not in self.device_ids:
+                await self.devices()
+            if entity not in self.device_ids:
+                raise web.HTTPForbidden(text="not a portal device")
+            if op in ("on", "off"):
+                await self.ha_call(domain, f"turn_{op}", {"entity_id": entity})
+            elif op == "level" and domain == "light":
+                pct = max(1, min(100, int(body.get("value", 50))))
+                await self.ha_call("light", "turn_on", {"entity_id": entity, "brightness_pct": pct})
+            else:
+                raise web.HTTPBadRequest(text="unsupported")
         else:
             raise web.HTTPForbidden(text="not a portal action")
 
@@ -173,6 +240,13 @@ def make_app(house: House) -> web.Application:
             log.exception("state failed")
             return web.json_response({"error": str(ex)}, status=502)
 
+    async def api_devices(_req):
+        try:
+            return web.json_response(await house.devices())
+        except Exception as ex:
+            log.exception("devices failed")
+            return web.json_response({"error": str(ex)}, status=502)
+
     async def api_do(req):
         await house.do(await req.json())
         return web.json_response({"ok": True})
@@ -181,8 +255,9 @@ def make_app(house: House) -> web.Application:
     app.on_cleanup.append(on_stop)
     app.router.add_get("/", index)
     app.router.add_get("/api/state", api_state)
+    app.router.add_get("/api/devices", api_devices)
     app.router.add_post("/api/do", api_do)
-    app.router.add_static("/fonts", WWW / "fonts")
+    app.router.add_static("/shared", WWW / "shared")
     return app
 
 

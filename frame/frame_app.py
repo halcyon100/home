@@ -1430,6 +1430,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         try:
+            if url.path.startswith("/shared/") and url.path[8:] in SHARED_FILES:
+                name = url.path[8:]
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared", name), "rb") as f:
+                    return self.send_bytes(f.read(), SHARED_FILES[name], cache=True)
             if url.path in ("/", "/index.html"):
                 return self.send_bytes(PAGE.encode(), "text/html; charset=utf-8")
             if url.path == "/api/status":
@@ -1581,6 +1585,8 @@ def main() -> None:
 
 
 # ---------------------------------------------------------------- page
+SHARED_FILES = {"appnav.js": "text/javascript; charset=utf-8", "archivo.woff2": "font/woff2"}
+
 PAGE = r"""<!doctype html>
 <html lang="en">
 <head>
@@ -1590,6 +1596,7 @@ PAGE = r"""<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Frame">
 <title>Frame</title>
+<script src="shared/appnav.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Young+Serif&display=swap" rel="stylesheet">
@@ -1849,9 +1856,15 @@ details.panel:not([open])>summary{margin-bottom:0}
 }
 @media (max-height:520px){ .tv{max-width:150px} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* shared app bar, in the Frame's own colours */
+app-bar.topbar{position:relative;--ground:var(--wall);--ink:var(--plaster);--quiet:var(--sage);--hair:rgba(236,238,234,.14);
+  max-width:1240px;margin:0 auto;padding:env(safe-area-inset-top) 32px 0}
+.bar-title{display:inline-block;padding:15px 0 13px;font:560 17px/1.45 "Archivo",var(--sans);font-stretch:90%;border-bottom:2px solid var(--plaster);margin-bottom:-1px}
+@media (max-width:860px){app-bar.topbar{padding:env(safe-area-inset-top) 18px 0}}
 </style>
 </head>
 <body>
+<app-bar app="frame" class="topbar"><span slot="tabs" class="bar-title">Frame</span></app-bar>
 <div class="page">
 <div class="layout">
   <aside class="side">
@@ -2046,6 +2059,8 @@ details.panel:not([open])>summary{margin-bottom:0}
 <div class="toast" id="toast" role="status"></div>
 
 <script>
+// Inside Home Assistant the page lives under an ingress path; every request is relative to it.
+const B = location.pathname.replace(/\/(index\.html)?$/, "");
 const $ = s => document.querySelector(s);
 const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
 let lib = {mine: [], samsung: [], collections: {}};
@@ -2071,7 +2086,7 @@ function toast(msg, err) {
 function imgSrc(id) {
   const all = lib.mine.concat(lib.samsung);
   const it = all.find(x => x.id === id);
-  return (it && it.full ? "/full/" : "/thumb/") + encodeURIComponent(id) + (it && it.v ? "?v=" + it.v : "");
+  return (it && it.full ? B+"/full/" : B+"/thumb/") + encodeURIComponent(id) + (it && it.v ? "?v=" + it.v : "");
 }
 
 /* ---------- status ---------- */
@@ -2117,17 +2132,17 @@ function renderStatus() {
 function button(text, cls, fn) { const b = document.createElement("button"); b.className = cls; b.textContent = text; b.onclick = fn; return b; }
 
 async function refreshStatus() {
-  try { status = await api("/api/status"); }
+  try { status = await api(B+"/api/status"); }
   catch (e) { status = {power: "unreachable"}; }
   renderStatus();
 }
 async function setArt(on) {
-  try { await post("/api/artmode", {on}); await refreshStatus(); } catch (e) { toast(e.message, true); }
+  try { await post(B+"/api/artmode", {on}); await refreshStatus(); } catch (e) { toast(e.message, true); }
 }
 
 /* ---------- library + collections ---------- */
 async function refreshLibrary() {
-  try { lib = await api("/api/library"); }
+  try { lib = await api(B+"/api/library"); }
   catch (e) { toast(e.message, true); }
   lib.collections = lib.collections || {};
   if (tab.startsWith("c:") && !lib.collections[tab.slice(2)]) tab = "mine";
@@ -2176,7 +2191,7 @@ function renderLibrary() {
     b.setAttribute("aria-label", selecting ? "Select " + it.id : "Put " + it.id + " on the wall");
     const im = new Image(); im.loading = "lazy"; im.alt = ""; im.onload = () => im.classList.add("in");
     im.onerror = () => { b.classList.add("noprev"); b.dataset.label = it.id; };
-    im.src = "/thumb/" + encodeURIComponent(it.id) + (it.v ? "?v=" + it.v : "");
+    im.src = B+"/thumb/" + encodeURIComponent(it.id) + (it.v ? "?v=" + it.v : "");
     b.append(im); b.onclick = () => selecting ? toggleSel(it.id, li) : show(it.id);
     li.innerHTML = '<span class="tick"></span>';
     li.prepend(b);
@@ -2191,7 +2206,7 @@ function renderLibrary() {
 }
 async function show(id) {
   try {
-    await post("/api/show", {id});
+    await post(B+"/api/show", {id});
     status.current = id; status.artmode = true; renderStatus(); toast("Now on the wall");
   } catch (e) { toast(e.message, true); }
 }
@@ -2228,8 +2243,8 @@ $("#reframe-btn").onclick = async () => {
   for (const it of items) {
     try {
       const [img, rec] = await Promise.all([
-        fetch("/original/" + encodeURIComponent(it.replaces)).then(r => { if (!r.ok) throw new Error("Original missing"); return r.blob(); }).then(loadInBrowser),
-        api("/api/recipe/" + encodeURIComponent(it.replaces))]);
+        fetch(B+"/original/" + encodeURIComponent(it.replaces)).then(r => { if (!r.ok) throw new Error("Original missing"); return r.blob(); }).then(loadInBrowser),
+        api(B+"/api/recipe/" + encodeURIComponent(it.replaces))]);
       Object.assign(it, img);
       if (rec.recipe) it.s = Object.assign(defaults(), rec.recipe);
     } catch (e) { it.error = e.message; toast(it.name + ": " + e.message, true); }
@@ -2250,12 +2265,12 @@ $("#c-del").onclick = async () => {
   $("#confirm").close();
   const ids = [...selected], n = ids.length;
   try {
-    await post("/api/delete", {ids});
+    await post(B+"/api/delete", {ids});
     toast("Deleted " + plural(n, "picture")); setSelecting(false); await refreshLibrary(); refreshStatus();
   } catch (e) { toast(e.message, true); }
 };
 async function collectionAction(body, done) {
-  try { const r = await post("/api/collections", body); lib.collections = r.collections; if (done) done(r); }
+  try { const r = await post(B+"/api/collections", body); lib.collections = r.collections; if (done) done(r); }
   catch (e) { toast(e.message, true); }
   renderTabs(); renderLibrary(); fillPlayWhat(); fillEditorCollections();
 }
@@ -2362,28 +2377,28 @@ function renderPlay() {
   $("#play-stop").disabled = !p && !(r.tv && r.tv.value && r.tv.value !== "off");
 }
 async function refreshRotation() {
-  try { rotation = await api("/api/rotation"); } catch (e) { rotation = {playing: null, tv: null}; }
+  try { rotation = await api(B+"/api/rotation"); } catch (e) { rotation = {playing: null, tv: null}; }
   renderPlay();
 }
 $("#play-go").onclick = async () => {
   const body = {target: $("#play-what").value, minutes: +$("#play-every").value, shuffle: $("#play-shuffle").checked};
   const b = $("#play-go"); b.disabled = true; b.textContent = "Starting…";
   try {
-    const r = await post("/api/play", body);
+    const r = await post(B+"/api/play", body);
     toast(r.note || (r.mode === "tv" ? "Playing on the TV" : "Playing from this app"), !!r.note);
     await refreshRotation();
   } catch (e) { toast(e.message, true); }
   b.disabled = false; b.textContent = "Play";
 };
 $("#play-stop").onclick = async () => {
-  try { await post("/api/stop", {}); toast("Stopped. The picture stays put."); await refreshRotation(); }
+  try { await post(B+"/api/stop", {}); toast("Stopped. The picture stays put."); await refreshRotation(); }
   catch (e) { toast(e.message, true); }
 };
 fillEvery();
 
 $("#watch").onclick = async () => {
   const on = $("#watch").getAttribute("aria-checked") !== "true";
-  try { await post("/api/watchdog", {on}); status.watchdog = on; renderStatus(); } catch (e) { toast(e.message, true); }
+  try { await post(B+"/api/watchdog", {on}); status.watchdog = on; renderStatus(); } catch (e) { toast(e.message, true); }
 };
 
 function fillEditorCollections() {
@@ -2548,7 +2563,7 @@ function loadInBrowser(blob) {
 async function loadPhoto(file) {
   try { return await loadInBrowser(file); }
   catch (e) {
-    const r = await fetch("/api/convert", {method: "POST", body: file});
+    const r = await fetch(B+"/api/convert", {method: "POST", body: file});
     if (!r.ok) { let m = "Couldn't open " + file.name; try { m = (await r.json()).error; } catch (x) {} throw new Error(m); }
     return await loadInBrowser(await r.blob());
   }
@@ -2822,12 +2837,12 @@ $("#ed-go").onclick = async () => {
       const blob = await finalJpeg(it);
       const last = i === items.length - 1 ? 1 : 0;
       const col = $("#ed-col").value;
-      const q = "/api/upload?prepared=1&show=" + last + (col ? "&collection=" + encodeURIComponent(col) : "")
+      const q = B+"/api/upload?prepared=1&show=" + last + (col ? "&collection=" + encodeURIComponent(col) : "")
         + "&recipe=" + encodeURIComponent(JSON.stringify(recipeOf(it)))
         + (it.replaces ? "&replace=" + encodeURIComponent(it.replaces) : "");
       const r = await api(q, {method: "POST", body: blob});
       if (!it.fromBox && r.id) {
-        try { await fetch("/api/original?id=" + encodeURIComponent(r.id), {method: "POST", body: await sourceJpeg(it)}); }
+        try { await fetch(B+"/api/original?id=" + encodeURIComponent(r.id), {method: "POST", body: await sourceJpeg(it)}); }
         catch (e) { toast(it.name + ": hung, but the original wasn't kept", true); }
       }
       it.done = true; ok++; renderQueue();
@@ -2855,12 +2870,12 @@ function renderDisplay() {
     const v = d.warmth.value; $("#d-warm-out").textContent = v === 0 ? "Neutral" : v > 0 ? "Warmer +" + v : "Cooler " + v; }
 }
 async function refreshDisplay() {
-  try { display = await api("/api/display"); renderDisplay(); }
+  try { display = await api(B+"/api/display"); renderDisplay(); }
   catch (e) { $("#d-bright-out").textContent = "unavailable"; $("#d-warm-out").textContent = "unavailable"; }
 }
 async function sendDisplay(change) {
   try {
-    const r = await post("/api/display", change);
+    const r = await post(B+"/api/display", change);
     display = r; renderDisplay();
     if (r.missed && r.missed.length) toast("The Frame didn't take that change.", true);
   } catch (e) { toast(e.message, true); refreshDisplay(); }
@@ -2942,9 +2957,9 @@ function renderSched() {
   d.slots.forEach(s => box.append(slotRow(s)));
   $("#slot-add").disabled = d.slots.length >= d.max;
 }
-async function refreshSched() { try { sched = await api("/api/schedule"); renderSched(); } catch (e) {} }
+async function refreshSched() { try { sched = await api(B+"/api/schedule"); renderSched(); } catch (e) {} }
 async function sendSched(change) {
-  try { sched = await post("/api/schedule", change); renderSched(); refreshDisplay(); }
+  try { sched = await post(B+"/api/schedule", change); renderSched(); refreshDisplay(); }
   catch (e) { toast(e.message, true); refreshSched(); }
 }
 const plain = s => ({id: s.id, at: s.at, time: s.time, offset: s.offset, brightness: s.brightness, sensor: s.sensor, warmth: s.warmth});
@@ -2972,7 +2987,7 @@ $("#import-file").onchange = async e => {
     const kind = /(^|\/)full\//.test(f.webkitRelativePath) ? "full" : "thumbs";
     const id = f.name.replace(/\.[^.]+$/, "");
     try {
-      const r = await fetch("/api/cache/import?kind=" + kind + "&id=" + encodeURIComponent(id), {method: "POST", body: f});
+      const r = await fetch(B+"/api/cache/import?kind=" + kind + "&id=" + encodeURIComponent(id), {method: "POST", body: f});
       if (r.ok) ok++;
     } catch (err) {}
   }
@@ -3000,15 +3015,15 @@ function renderWake() {
     : wake.now ? "Within those hours now." : "Outside those hours now.";
   $("#wake-now").disabled = !wake.mac;
 }
-async function refreshWake() { try { wake = await api("/api/wake"); renderWake(); } catch (e) {} }
+async function refreshWake() { try { wake = await api(B+"/api/wake"); renderWake(); } catch (e) {} }
 async function saveWake() {
-  try { wake = await post("/api/wake", {on: $("#wake-on").checked, from: $("#wake-from").value, to: $("#wake-to").value}); renderWake(); }
+  try { wake = await post(B+"/api/wake", {on: $("#wake-on").checked, from: $("#wake-from").value, to: $("#wake-to").value}); renderWake(); }
   catch (e) { toast(e.message, true); refreshWake(); }
 }
 $("#wake-on").onchange = saveWake; $("#wake-from").onchange = saveWake; $("#wake-to").onchange = saveWake;
 $("#wake-now").onclick = async () => {
   const b = $("#wake-now"); b.disabled = true; toast("Waking the Frame…");
-  try { const r = await post("/api/wake/now", {}); toast(r.result === "on" ? "It's awake" : "No answer from the TV", r.result !== "on"); refreshStatus(); }
+  try { const r = await post(B+"/api/wake/now", {}); toast(r.result === "on" ? "It's awake" : "No answer from the TV", r.result !== "on"); refreshStatus(); }
   catch (e) { toast(e.message, true); }
   b.disabled = false;
 };
