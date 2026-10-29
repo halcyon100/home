@@ -5,6 +5,7 @@ Glides each light between hand-tuned keyframes through the day, so the house get
 - **Your changes win.** Anything changed by a person (voice with a level, a wall dimmer, an app) is held until that light is turned off and on, or a plain "on" is sent, or the morning reset.
 - **Never turns a light on** outside a wake keyframe.
 - **Kill switch:** turn off `input_boolean.circadian` (configurable) and it stops sending anything.
+- **Boost:** turn on `input_boolean.circadian_boost` (configurable) on a dark day. The lights listed in `boost` ride the same curve, multiplied by `boost_factor` (default 1.5), with the schedule's colour; off lights that have a level right now come on. From sunset (or from when it was switched on, if later) it eases out to the next keyframe, then switches itself off. Switching it off by hand puts the house straight back and turns off what it turned on.
 - **Shadow mode** (`shadow: true`, the default) logs what it would do and touches nothing.
 
 Keyframes live in the app's options on your Home Assistant box, not in this repository.

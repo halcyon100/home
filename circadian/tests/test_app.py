@@ -483,3 +483,58 @@ async def test_evening_keyframe_trades_lights(aiohttp_server):
     await asyncio.sleep(0.05)
     assert not fake.calls
     reader.cancel(); await ha.close()
+
+
+def boost_options():
+    return dict(options(), boost=["light.cab", "light.nook", "light.chand", "light.island"],
+                boost_factor=1.5)
+
+
+async def set_boost(fake, on):
+    e = "input_boolean.circadian_boost"
+    old = fake.states.get(e) or st(e, "off")
+    new = dict(old, state="on" if on else "off", context={"id": f"b-{on}", "user_id": "someone"})
+    fake.states[e] = new
+    await fake.event("state_changed", {"entity_id": e, "old_state": old, "new_state": new})
+    await asyncio.sleep(0.05)
+
+
+@pytest.mark.asyncio
+async def test_boost_rides_the_curve_and_turns_on_scheduled_lights(aiohttp_server):
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(12, 0), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, boost_options(), clock)
+    await set_boost(fake, True)
+    by = {x[2]: x[3] for x in fake.calls if x[1] == "turn_on"}
+    # noon: cab 85 -> capped 100, nook gliding 57.5 -> 86 with the curve's colour, chand (off) 35 -> 52.5 on
+    assert by["light.cab"]["brightness_pct"] == 100
+    assert by["light.nook"]["brightness_pct"] == 86
+    assert by["light.nook"]["color_temp_kelvin"] == c.schedule.target_at("light.nook", c.now()).kelvin
+    assert by["light.chand"]["brightness_pct"] in (52, 53)
+    assert c.boost_lit == {"light.chand", "light.island"}
+    # manual off: lights boost turned on go off again, the rest back to the curve
+    fake.calls.clear()
+    await set_boost(fake, False)
+    offs = {x[2] for x in fake.calls if x[1] == "turn_off"}
+    assert offs == {"light.chand", "light.island"}
+    nook = [x for x in fake.calls if x[2] == "light.nook"][0][3]
+    assert nook["brightness_pct"] in (57, 58)
+    reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_boost_eases_out_after_sunset_and_switches_off(aiohttp_server):
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(12, 0), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, boost_options(), clock)
+    await set_boost(fake, True)
+    start, end = c.boost_window(c.now())
+    assert start.hour == 16 and end.hour == 19      # sunset -> next keyframe (eve 19:00)
+    clock.dt = start + (end - start) / 2
+    assert abs(c.boost_mult(c.now()) - 1.25) < 0.01
+    clock.dt = end + timedelta(minutes=1)
+    fake.calls.clear()
+    await c.tick()
+    await asyncio.sleep(0.05)
+    assert ("input_boolean", "turn_off", "input_boolean.circadian_boost", {}) in fake.calls
+    await set_boost(fake, False)
+    assert not [x for x in fake.calls if x[1] == "turn_off" and x[0] == "light"]   # eased out: nothing snaps
+    reader.cancel(); await ha.close()
