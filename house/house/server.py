@@ -18,7 +18,7 @@ from aiohttp import web
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -41,6 +41,9 @@ class House:
         self.exclude = set(opts.get("exclude", []) or [])
         self.switches = list(opts.get("switches", []) or [])
         self.floor_order = opts.get("floors", []) or []
+        # Rooms, as people think of them: each control is one thing you switch, which may be
+        # a group or a Hue-behind-Lutron wrapper in Home Assistant ("entity|Label").
+        self.rooms = opts.get("rooms", []) or []
         self.device_ids: set[str] = set()
         self.session: aiohttp.ClientSession | None = None
 
@@ -68,7 +71,47 @@ class House:
                  "{% set ns.o = ns.o + [[f, floor_name(f), a, area_name(a), e]] %}{% endif %}"
                  "{% endfor %}{% endfor %}{% endfor %}{{ ns.o | tojson }}")
 
+    @staticmethod
+    def _item(e: str, label: str | None, st: dict) -> dict:
+        a = st.get("attributes", {})
+        modes = a.get("supported_color_modes") or []
+        return {"entity": e, "name": label or a.get("friendly_name", e), "state": st.get("state"),
+                "brightness": round(a["brightness"] / 2.55) if a.get("brightness") else None,
+                "dimmable": e.startswith("light.") and any(m != "onoff" for m in modes),
+                "kelvin": a.get("color_temp_kelvin"),
+                "parts": len(a["entity_id"]) if isinstance(a.get("entity_id"), list) else 1}
+
+    async def curated(self):
+        states = await self.ha_get("/states")
+        by = {s["entity_id"]: s for s in states}
+        floors, ids = {}, set()
+        for room in self.rooms:
+            fid = room.get("floor", "")
+            f = floors.setdefault(fid, {"id": fid, "name": fid, "areas": []})
+            items = []
+            for spec in room.get("controls", []):
+                e, _, label = (x.strip() for x in spec.partition("|"))
+                if e in by and e not in self.exclude:
+                    items.append(self._item(e, label or None, by[e]))
+                    ids.add(e)
+            if items:
+                f["areas"].append({"id": room["name"].lower(), "name": room["name"], "items": items})
+        self.device_ids = ids
+        order = {f: i for i, f in enumerate(self.floor_order)}
+        return by, [f for f in sorted(floors.values(), key=lambda f: order.get(f["id"], 99)) if f["areas"]]
+
+    def _covers(self, by):
+        def cover(e):
+            st = by.get(e) or {}
+            a = st.get("attributes", {})
+            return {"entity": e, "name": a.get("friendly_name", e), "state": st.get("state"),
+                    "position": a.get("current_position")}
+        return [cover(e) for e in self.shades if e in by]
+
     async def devices(self):
+        if self.rooms:
+            by, floors = await self.curated()
+            return {"floors": floors, "shades": self._covers(by)}
         rows, states = await asyncio.gather(self.template(self.AREAS_TPL), self.ha_get("/states"))
         by = {s["entity_id"]: s for s in states}
         floors: dict[str, dict] = {}
@@ -106,7 +149,7 @@ class House:
             a = st.get("attributes", {})
             return {"entity": e, "name": a.get("friendly_name", e), "state": st.get("state"),
                     "position": a.get("current_position")}
-        return {"floors": out, "shades": [cover(e) for e in self.shades if e in by]}
+        return {"floors": out, "shades": self._covers(by)}
 
     async def circadian_day(self):
         try:
