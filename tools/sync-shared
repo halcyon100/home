@@ -1,0 +1,10 @@
+#!/bin/sh
+# Copy the shared UI pieces (app bar, typeface) into each app that ships them.
+# Apps build from their own folder, so they need their own copy; tests fail on drift.
+set -e
+cd "$(dirname "$0")/.."
+for dest in house/house/www/shared frame/shared; do
+  mkdir -p "$dest"
+  cp shared/appnav.js shared/archivo.woff2 shared/OFL-archivo.txt "$dest/"
+done
+echo "shared -> house, frame"

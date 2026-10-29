@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>House</title>
+<script src="shared/appnav.js"></script>
 <style>
-@font-face{font-family:"Archivo";src:url("fonts/archivo.woff2") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%;font-display:swap}
 
 /* Tokens. Day and night follow the sun, not the phone. */
 :root{
@@ -20,8 +20,17 @@
 *{box-sizing:border-box}
 html{background:var(--ground);color:var(--ink);-webkit-text-size-adjust:100%}
 body{margin:0;font:400 var(--s0)/1.45 "Archivo",system-ui,sans-serif;font-stretch:100%;font-feature-settings:"tnum" 1,"case" 1;
-  padding:max(var(--gut),env(safe-area-inset-top)) var(--gut) calc(var(--gut)*2);transition:background-color 1.2s, color 1.2s}
-main{max-width:1180px;margin:0 auto}
+  padding:env(safe-area-inset-top) 0 calc(var(--gut)*2);transition:background-color 1.2s, color 1.2s}
+main{max-width:1180px;margin:0 auto;padding:clamp(18px,3vw,32px) var(--gut) 0}
+[hidden]{display:none!important}
+
+/* Top bar: the shared app bar, with this app's views as tabs */
+app-bar{padding:0 var(--gut)}
+.tabs{display:flex;gap:clamp(18px,3vw,30px);white-space:nowrap}
+.tabs button{appearance:none;border:0;background:none;padding:15px 0 13px;cursor:pointer;font-size:var(--s0);font-weight:440;font-stretch:90%;
+  color:var(--quiet);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);font-weight:560;border-bottom-color:var(--ink)}
+.tabs button:hover{color:var(--ink)}
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 
@@ -77,11 +86,48 @@ ol.log .day-break{grid-column:1/-1;font-stretch:84%;font-size:var(--s-1);color:v
 .shade button{appearance:none;border:0;background:none;padding:.1em .2em;font-stretch:80%;font-size:var(--s-1);color:var(--quiet);cursor:pointer;text-decoration:underline;text-decoration-color:var(--hair);text-underline-offset:3px}
 .shade button:hover{color:var(--ink);text-decoration-color:var(--ink)}
 .err{color:var(--quiet);font-stretch:88%}
+.more{appearance:none;border:0;background:none;padding:0;margin-top:1.3em;cursor:pointer;color:var(--ink);font-stretch:90%;
+  text-decoration:underline;text-decoration-color:var(--hair);text-underline-offset:4px}
+.more:hover{text-decoration-color:var(--ink)}
+.page-h{font-size:var(--s3);font-weight:300;font-stretch:104%;letter-spacing:-.02em;line-height:1.05;margin:.3em 0 1.1em}
+ol.log.big{font-size:var(--s1);gap:.65em 1.4em;max-width:46rem}
+ol.log.big time{font-size:var(--s0)}
+
+/* Devices: floors, then rooms, then each light */
+.dev-shades{max-width:46rem;margin-bottom:clamp(36px,5vw,56px)}
+.floor{margin-bottom:clamp(40px,6vw,72px)}
+.floor > h2{font-size:var(--s3);font-weight:300;font-stretch:104%;letter-spacing:-.02em;line-height:1.05;margin:0 0 .6em}
+.floor > h2 span{font-size:var(--s0);font-weight:400;font-stretch:86%;letter-spacing:0}
+.rooms{display:grid;gap:clamp(26px,3.5vw,40px) clamp(28px,4vw,56px);grid-template-columns:1fr}
+@media (min-width:760px){.rooms{grid-template-columns:1fr 1fr}}
+@media (min-width:1080px){.rooms{grid-template-columns:1fr 1fr 1fr}}
+.room h3{font-size:var(--s0);font-weight:600;font-stretch:88%;margin:0 0 .5em;display:flex;justify-content:space-between;gap:1em}
+.room h3 span{font-weight:400;color:var(--quiet)}
+.dev{display:grid;grid-template-columns:1fr auto;grid-template-areas:"n t" "s s";align-items:center;gap:.15em .8em;padding:.55em 0;border-top:1px solid var(--hair)}
+.dev .n{grid-area:n;font-stretch:96%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dev .n small{color:var(--quiet);font-stretch:82%;font-size:var(--s-1);margin-left:.5em}
+.dev .tg{grid-area:t}
+.dev input{grid-area:s}
+.tg{appearance:none;border:1px solid var(--hair);background:none;border-radius:999px;cursor:pointer;padding:.18em .75em .22em;font-size:var(--s-1);font-stretch:84%;color:var(--quiet);min-width:3.6em}
+.tg[aria-pressed="true"]{background:var(--light);border-color:var(--light);color:#1B2124}
+.dev.unav .n,.dev.unav .tg{opacity:.45}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;margin:0;cursor:pointer;--v:0%}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--ink) var(--v),var(--hair) var(--v))}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--ink) var(--v),var(--hair) var(--v))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--ground);border:1.5px solid var(--ink);margin-top:-6.5px}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--ground);border:1.5px solid var(--ink)}
+input[type=range]:disabled{opacity:.35}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
+<app-bar app="house"><nav slot="tabs" class="tabs" role="tablist" aria-label="House">
+  <button role="tab" data-v="now" aria-selected="true">Now</button>
+  <button role="tab" data-v="devices" aria-selected="false">Devices</button>
+  <button role="tab" data-v="activity" aria-selected="false">Activity</button>
+</nav></app-bar>
 <main>
+<section id="v-now" role="tabpanel" aria-label="Now">
   <header class="mast" id="mast"></header>
   <h1 class="say" id="say" aria-live="polite">Reading the house</h1>
   <figure class="day" id="day" aria-label="Today's light, brightness over the day, coloured by colour temperature">
@@ -97,12 +143,21 @@ ol.log .day-break{grid-column:1/-1;font-stretch:84%;font-size:var(--s-1);color:v
     </div>
     <div>
       <h2>Motion</h2><dl id="motion"></dl>
-      <div class="sub"><h2>Curtains and shades</h2><dl id="shades"></dl></div>
     </div>
     <div>
       <h2>Today in the house</h2><ol class="log" id="log"></ol>
+      <button class="more" data-go="activity">All activity</button>
     </div>
   </section>
+</section>
+<section id="v-devices" role="tabpanel" aria-label="Devices" hidden>
+  <div class="dev-shades"><h2>Curtains and shades</h2><dl id="dshades"></dl></div>
+  <div id="floors"><p class="err">Finding the rooms.</p></div>
+</section>
+<section id="v-activity" role="tabpanel" aria-label="Activity" hidden>
+  <h1 class="page-h">The last day in the house</h1>
+  <ol class="log big" id="alog"></ol>
+</section>
 </main>
 <script>
 "use strict";
@@ -234,17 +289,66 @@ function render(){
     return `<dt>${esc(m.name.replace(/ (motion|presence)$/i,""))}</dt><dd class="${cls}">${txt}</dd>`;
   }).join("") || `<dt class="err">No motion sensors chosen.</dt><dd></dd>`;
 
-  $("shades").innerHTML = s.shades.map(c=>{
-    const st = c.state==="unknown" ? "" : (c.position!=null && c.state==="open" && c.position<100 ? `${c.position}% open` : c.state);
-    return `<dt>${esc(c.name)} <span style="color:var(--quiet);font-stretch:84%">${esc(st)}</span></dt><dd class="shade"><button data-c="${esc(c.entity)}" data-op="open">Open</button><button data-c="${esc(c.entity)}" data-op="close">Close</button></dd>`;
-  }).join("");
+  $("log").innerHTML = logRows(s.activity.slice(0,8));
+  $("alog").innerHTML = logRows(s.activity);
+}
 
+function shadeRows(list){
+  return list.map(c=>{
+    const st = c.state==="unknown" || c.state==null ? "" : (c.position!=null && c.state==="open" && c.position<100 ? `${c.position}% open` : c.state);
+    return `<dt>${esc(c.name)} <span style="color:var(--quiet);font-stretch:84%">${esc(st)}</span></dt><dd class="shade"><button data-c="${esc(c.entity)}" data-op="open">Open</button><button data-c="${esc(c.entity)}" data-op="stop">Stop</button><button data-c="${esc(c.entity)}" data-op="close">Close</button></dd>`;
+  }).join("");
+}
+
+function logRows(list){
   let last = "";
-  $("log").innerHTML = s.activity.map(a=>{
+  return list.map(a=>{
     const day = new Date(a.when).toDateString(), br = day!==last && last ? `<li><span class="day-break">Yesterday</span></li>` : "";
     last = day;
     return `${br}<li><time datetime="${esc(a.when)}">${t(a.when)}</time><span>${esc(say(a))}</span></li>`;
   }).join("") || `<li><span></span><span class="err">Nothing yet today.</span></li>`;
+}
+
+/* Devices */
+let D = null;
+const FLOOR = {main:"Main floor", upper:"Upstairs", basement:"Basement", outside:"Outside"};
+async function loadDevices(){
+  try{
+    const r = await fetch(API.startsWith("mock") ? "mock_devices.json" : "api/devices",{cache:"no-store"});
+    D = await r.json(); if (D.error) throw new Error(D.error);
+    renderDevices();
+  }catch(e){ $("floors").innerHTML = `<p class="err">The rooms didn't load. Try again in a moment.</p>`; }
+}
+function renderDevices(){
+  $("dshades").innerHTML = shadeRows(D.shades);
+  $("floors").innerHTML = D.floors.map(f=>{
+    const items = f.areas.flatMap(a=>a.items), on = items.filter(i=>i.state==="on").length;
+    return `<section class="floor"><h2>${esc(FLOOR[f.id]||f.name)} <span>${on} of ${items.length} on</span></h2><div class="rooms">${
+      f.areas.map(a=>`<div class="room"><h3>${esc(a.name)}</h3>${
+        a.items.map(i=>{
+          const on = i.state==="on", un = i.state==="unavailable", v = on ? (i.brightness ?? 100) : 0;
+          const nm = esc(i.name.toLowerCase().startsWith(a.name.toLowerCase()+" ") ? i.name.slice(a.name.length+1) : i.name);
+          return `<div class="dev${un?" unav":""}"><span class="n">${nm}${on&&i.brightness!=null?`<small>${i.brightness}%</small>`:""}${un?"<small>Offline</small>":""}</span>`+
+            `<button class="tg" data-d="${esc(i.entity)}" aria-pressed="${on}" aria-label="${esc(i.name)} ${on?"on":"off"}" ${un?"disabled":""}>${on?"On":"Off"}</button>`+
+            (i.dimmable && on ? `<input type="range" min="1" max="100" value="${v||1}" style="--v:${v}%" data-l="${esc(i.entity)}" aria-label="${esc(i.name)} brightness" ${un?"disabled":""}>` : "")+`</div>`;
+        }).join("")}</div>`).join("")}</div></section>`;
+  }).join("");
+}
+document.addEventListener("input",e=>{ const r=e.target.closest("input[data-l]"); if (r) r.style.setProperty("--v", r.value+"%"); });
+document.addEventListener("change",e=>{
+  const r = e.target.closest("input[data-l]");
+  if (r) act({entity:r.dataset.l, op:"level", value:+r.value}, r, loadDevices);
+});
+
+/* Views */
+let view = "now";
+function show(v){
+  view = v;
+  document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.v===v));
+  ["now","devices","activity"].forEach(x=>$("v-"+x).hidden = x!==v);
+  try{ sessionStorage.setItem("house-view", v); }catch(e){}
+  if (v==="devices") loadDevices();
+  window.scrollTo(0,0);
 }
 
 function say(a){
@@ -268,13 +372,18 @@ async function load(){
   }
 }
 
-async function act(body, el){
+async function act(body, el, after){
   if (API.startsWith("mock")) return;
   el?.classList.add("busy");
   try{ await fetch("api/do",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); }
-  finally{ setTimeout(load,1200); setTimeout(()=>el?.classList.remove("busy"),1200); }
+  finally{ setTimeout(after||refresh,900); setTimeout(()=>el?.classList.remove("busy"),900); }
 }
+function refresh(){ load(); if (view==="devices") loadDevices(); }
 document.addEventListener("click",e=>{
+  const tab = e.target.closest(".tabs button, [data-go]");
+  if (tab){ show(tab.dataset.v || tab.dataset.go); return; }
+  const d = e.target.closest(".tg");
+  if (d){ d.setAttribute("aria-pressed", d.getAttribute("aria-pressed")!=="true"); act({entity:d.dataset.d, op: d.getAttribute("aria-pressed")==="true"?"on":"off"}, d, loadDevices); return; }
   const b = e.target.closest(".act");
   if (b){ const tog = b.hasAttribute("aria-pressed"); act({entity:b.dataset.e, op: tog ? (b.getAttribute("aria-pressed")==="true"?"off":"on") : "run"}, b); return; }
   const c = e.target.closest("[data-c]");
@@ -292,8 +401,9 @@ fig.addEventListener("pointerdown",scrubAt);
 fig.addEventListener("pointerleave",()=>{ scrub=null; if (S) draw(); });
 fig.addEventListener("pointerup",ev=>{ if (ev.pointerType!=="mouse"){ setTimeout(()=>{scrub=null; if (S) draw();},1600); } });
 
-load(); setInterval(load,30000);
-document.addEventListener("visibilitychange",()=>{ if (!document.hidden) load(); });
+load(); setInterval(refresh,30000);
+try{ const v = sessionStorage.getItem("house-view"); if (v && v!=="now") show(v); }catch(e){}
+document.addEventListener("visibilitychange",()=>{ if (!document.hidden) refresh(); });
 </script>
 </body>
 </html>
