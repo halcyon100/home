@@ -1,2 +1,2 @@
-aiohttp>=3.9,<4
+aiohttp==3.14.5
 astral==3.2

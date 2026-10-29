@@ -1,0 +1,57 @@
+# Checks every push and pull request. Dependabot's patch updates (bug and security fixes)
+# merge by themselves once the checks pass; minor and major updates wait for a person.
+# A merge never deploys: an app changes only when it is updated in Home Assistant.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 11 * * 1"   # weekly, so a newly published hole in a pinned library still shows up
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt -r circadian/requirements.txt -r house/requirements.txt -r frame/requirements.txt
+      # Known security holes in what the apps install fail the check.
+      - run: |
+          for r in circadian frame house; do pip-audit --strict -r $r/requirements.txt; done
+      - run: ruff check .
+      - run: python -m pytest -q tests
+      - run: cd circadian && CIRCADIAN_STATE=$RUNNER_TEMP/circadian.json python -m pytest -q tests
+      - run: python -m py_compile frame/frame_app.py house/house/server.py
+      - run: node --check shared/appnav.js
+
+  # Passwords, keys and tokens never get into the code: any in the history fails the check.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - run: docker run --rm -v "$PWD":/repo ghcr.io/gitleaks/gitleaks:v8.30.0 git /repo --redact --no-banner
+
+  automerge:
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+    needs: [check, secrets]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v3
+      - if: steps.meta.outputs.update-type == 'version-update:semver-patch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --merge "$PR_URL"

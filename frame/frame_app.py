@@ -28,7 +28,6 @@ import logging
 import os
 import re
 import socket
-import sys
 import threading
 import time
 from datetime import datetime, timedelta
@@ -189,7 +188,7 @@ class TV:
             for attempt in (1, 2):
                 box = {}
 
-                def run():
+                def run(box=box):   # bind this attempt's box: a timed-out thread must not write into the retry's
                     try:
                         if self._art is None:
                             self._art = self._remote().art()
@@ -896,7 +895,7 @@ def api_reset(p: dict) -> dict:
     removed = 0
     for k in range(0, len(ids), 20):
         batch = ids[k:k + 20]
-        TVC.call(lambda a: a.delete_list(batch))
+        TVC.call(lambda a, batch=batch: a.delete_list(batch))
         removed += len(batch)
     for cid in ids:
         drop_cache(cid)
@@ -1142,7 +1141,7 @@ def player_loop() -> None:
             else:
                 nxt = pool[(pool.index(last) + 1) % len(pool)] if last in pool else pool[0]
 
-            def go(art):
+            def go(art, nxt=nxt):
                 art.select_image(nxt, show=artmode_is_on(art.get_artmode()))
 
             TVC.call(go)

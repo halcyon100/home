@@ -1,0 +1,20 @@
+# Weekly pull requests to keep dependencies current, so security fixes don't pile up.
+# Minor and patch updates come grouped in one PR per folder; major versions come one at a time.
+# Nothing here reaches the house by itself: an app changes only when it is updated in Home Assistant.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directories: [/circadian, /frame, /house, /]
+    schedule: {interval: weekly}
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directories: [/circadian, /frame, /house]
+    schedule: {interval: weekly}
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
