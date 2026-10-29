@@ -300,15 +300,17 @@ function renderDevices(){
   $("dshades").innerHTML = shadeRows(D.shades);
   $("floors").innerHTML = D.floors.map(f=>{
     const items = f.areas.flatMap(a=>a.items), on = items.filter(i=>i.state==="on").length;
-    return `<section class="floor"><h2>${esc(FLOOR[f.id]||f.name)} <span>${on} of ${items.length} on</span></h2><div class="rooms">${
-      f.areas.map(a=>`<div class="room"><h3>${esc(a.name)}</h3>${
-        a.items.map(i=>{
-          const on = i.state==="on", un = i.state==="unavailable", v = on ? (i.brightness ?? 100) : 0;
-          const nm = esc(i.name.toLowerCase().startsWith(a.name.toLowerCase()+" ") ? i.name.slice(a.name.length+1) : i.name);
-          return `<div class="dev${un?" unav":""}"><span class="n">${nm}${on&&i.brightness!=null?`<small>${i.brightness}%</small>`:""}${un?"<small>Offline</small>":""}</span>`+
-            `<button class="pill tg" data-d="${esc(i.entity)}" aria-pressed="${on}" aria-label="${esc(i.name)} ${on?"on":"off"}" ${un?"disabled":""}>${on?"On":"Off"}</button>`+
-            (i.dimmable && on ? `<input type="range" min="1" max="100" value="${v||1}" style="--v:${v}%" data-l="${esc(i.entity)}" aria-label="${esc(i.name)} brightness" ${un?"disabled":""}>` : "")+`</div>`;
-        }).join("")}</div>`).join("")}</div></section>`;
+    const row = (i, label) => {
+      const on = i.state==="on", un = i.state==="unavailable", v = on ? (i.brightness ?? 100) : 0;
+      return `<div class="dev${un?" unav":""}"><span class="n">${esc(label)}${on&&i.dimmable&&i.brightness!=null?`<small>${i.brightness}%</small>`:""}${un?"<small>Offline</small>":""}</span>`+
+        `<button class="pill tg" data-d="${esc(i.entity)}" aria-pressed="${on}" aria-label="${esc(label)} ${on?"on":"off"}" ${un?"disabled":""}>${on?"On":"Off"}</button>`+
+        (i.dimmable && on ? `<input type="range" min="1" max="100" value="${v||1}" style="--v:${v}%" data-l="${esc(i.entity)}" aria-label="${esc(label)} brightness">` : "")+`</div>`;
+    };
+    // Rooms with several things get a heading; single-control rooms gather into one quiet list.
+    const multi = f.areas.filter(a=>a.items.length>1), single = f.areas.filter(a=>a.items.length===1);
+    const blocks = multi.map(a=>`<div class="room"><h3>${esc(a.name)}</h3>${a.items.map(i=>row(i,i.name)).join("")}</div>`);
+    if (single.length) blocks.push(`<div class="room">${multi.length?"<h3>Elsewhere</h3>":""}${single.map(a=>row(a.items[0], a.name)).join("")}</div>`);
+    return `<section class="floor"><h2>${esc(FLOOR[f.id]||f.name)} <span>${on} of ${items.length} on</span></h2><div class="rooms">${blocks.join("")}</div></section>`;
   }).join("");
 }
 document.addEventListener("input",e=>{ const r=e.target.closest("input[data-l]"); if (r) r.style.setProperty("--v", r.value+"%"); });
