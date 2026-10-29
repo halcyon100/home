@@ -78,6 +78,21 @@ ol.log.big time{font-size:var(--s0)}
 
 /* Devices: floors, then rooms, then each light */
 .dev-shades{max-width:46rem;margin-bottom:clamp(36px,5vw,56px)}
+/* Jump bar: floors, what's on, pins. Sticks under the app bar. */
+.jump{position:sticky;top:52px;z-index:10;background:var(--ground);display:flex;gap:.4em 1.3em;flex-wrap:nowrap;overflow-x:auto;
+  scrollbar-width:none;margin:0 calc(-1*var(--gut)) clamp(22px,3vw,34px);padding:.75em var(--gut) .7em;border-bottom:1px solid var(--hair);white-space:nowrap}
+.jump::-webkit-scrollbar{display:none}
+.jump button{appearance:none;border:0;background:none;padding:.15em 0;cursor:pointer;color:var(--quiet);font-stretch:88%;font-size:var(--s-1)}
+.jump button:hover{color:var(--ink)}
+.jump button[aria-pressed="true"]{color:var(--ink);font-weight:560}
+.floor{scroll-margin-top:110px}
+.pin{appearance:none;border:0;background:none;cursor:pointer;padding:0 .2em;margin-left:.4em;font-size:var(--s-1);font-stretch:84%;color:var(--quiet);
+  text-decoration:underline;text-decoration-color:var(--hair);text-underline-offset:3px}
+.pin[aria-pressed="true"]{color:var(--ink);text-decoration-color:var(--ink)}
+.pinned{margin-bottom:2.2em}
+.pinned .dev:first-child{border-top:0}
+.pinned .empty{color:var(--quiet);font-stretch:88%;margin:0}
+.pinned .empty button{appearance:none;border:0;background:none;padding:0;color:var(--ink);cursor:pointer;text-decoration:underline;text-decoration-color:var(--hair);text-underline-offset:4px;font:inherit}
 .floor{margin-bottom:clamp(40px,6vw,72px)}
 .floor > h2{font-size:var(--s3);font-weight:300;font-stretch:104%;letter-spacing:-.02em;line-height:1.05;margin:0 0 .6em}
 .floor > h2 span{font-size:var(--s0);font-weight:400;font-stretch:86%;letter-spacing:0}
@@ -113,6 +128,7 @@ ol.log.big time{font-size:var(--s0)}
   </figure>
   <section class="field">
     <div>
+      <div class="pinned" id="pinned-wrap"><h2>Pinned</h2><div id="pinned"></div></div>
       <h2>Shortcuts</h2>
       <div class="acts" id="acts"></div>
       <div class="sub"><h2>Light right now</h2><dl id="status"></dl></div>
@@ -127,6 +143,7 @@ ol.log.big time{font-size:var(--s0)}
   </section>
 </section>
 <section id="v-devices" role="tabpanel" aria-label="Devices" hidden>
+  <nav class="jump" id="jump" aria-label="Find a device"></nav>
   <div class="dev-shades"><h2>Curtains and shades</h2><dl id="dshades"></dl></div>
   <div id="floors"><p class="err">Finding the rooms.</p></div>
 </section>
@@ -296,22 +313,56 @@ async function loadDevices(){
     renderDevices();
   }catch(e){ $("floors").innerHTML = `<p class="err">The rooms didn't load. Try again in a moment.</p>`; }
 }
+/* Pins live on this phone or computer; each person keeps their own. */
+let pins = [];
+try{ pins = JSON.parse(localStorage.getItem("house-pins")||"[]"); }catch(e){}
+const savePins = () => { try{ localStorage.setItem("house-pins", JSON.stringify(pins)); }catch(e){} };
+let onlyOn = false, editPins = false;
+
+function devRow(i, label){
+  const on = i.state==="on", un = i.state==="unavailable", v = on ? (i.brightness ?? 100) : 0, pinned = pins.includes(i.entity);
+  return `<div class="dev${un?" unav":""}"><span class="n">${esc(label)}${on&&i.dimmable&&i.brightness!=null?`<small>${i.brightness}%</small>`:""}${un?"<small>Offline</small>":""}`+
+    (editPins ? `<button class="pin" data-pin="${esc(i.entity)}" aria-pressed="${pinned}">${pinned?"Pinned":"Pin"}</button>` : "")+`</span>`+
+    `<button class="pill tg" data-d="${esc(i.entity)}" aria-pressed="${on}" aria-label="${esc(label)} ${on?"on":"off"}" ${un?"disabled":""}>${on?"On":"Off"}</button>`+
+    (i.dimmable && on ? `<input type="range" min="1" max="100" value="${v||1}" style="--v:${v}%" data-l="${esc(i.entity)}" aria-label="${esc(label)} brightness">` : "")+`</div>`;
+}
+/* Every control with the label people know it by: room name for single-control rooms. */
+function controls(){
+  const out = [];
+  for (const f of D?.floors||[]) for (const a of f.areas)
+    for (const i of a.items) out.push({i, label: a.items.length===1 ? a.name : i.name, room: a.name, floor: f.id});
+  return out;
+}
+function renderPinned(){
+  const wrap = $("pinned-wrap");
+  const empty = `<p class="empty">Keep the lights you reach for here. <button data-go="devices" data-edit>Choose them in Devices</button></p>`;
+  if (!D){ $("pinned").innerHTML = pins.length ? "" : empty; return; }
+  const by = Object.fromEntries(controls().map(c=>[c.i.entity, c]));
+  const list = pins.map(e=>by[e]).filter(Boolean);
+  $("pinned").innerHTML = list.length
+    ? list.map(c=>devRow(c.i, c.label===c.room ? c.label : `${c.room} ${c.label.toLowerCase()}`)).join("")
+    : empty;
+}
 function renderDevices(){
   $("dshades").innerHTML = shadeRows(D.shades);
-  $("floors").innerHTML = D.floors.map(f=>{
-    const items = f.areas.flatMap(a=>a.items), on = items.filter(i=>i.state==="on").length;
-    const row = (i, label) => {
-      const on = i.state==="on", un = i.state==="unavailable", v = on ? (i.brightness ?? 100) : 0;
-      return `<div class="dev${un?" unav":""}"><span class="n">${esc(label)}${on&&i.dimmable&&i.brightness!=null?`<small>${i.brightness}%</small>`:""}${un?"<small>Offline</small>":""}</span>`+
-        `<button class="pill tg" data-d="${esc(i.entity)}" aria-pressed="${on}" aria-label="${esc(label)} ${on?"on":"off"}" ${un?"disabled":""}>${on?"On":"Off"}</button>`+
-        (i.dimmable && on ? `<input type="range" min="1" max="100" value="${v||1}" style="--v:${v}%" data-l="${esc(i.entity)}" aria-label="${esc(label)} brightness">` : "")+`</div>`;
-    };
+  const floorsOn = D.floors.map(f=>f.areas.flatMap(a=>a.items).filter(i=>i.state==="on").length);
+  $("jump").innerHTML =
+    `<button data-filter aria-pressed="${onlyOn}">On now, ${floorsOn.reduce((a,b)=>a+b,0)}</button>`+
+    `<button data-editpins aria-pressed="${editPins}">${editPins?"Done pinning":"Pin"}</button>`+
+    D.floors.map(f=>`<button data-floor="${esc(f.id)}">${esc(FLOOR[f.id]||f.name)}</button>`).join("");
+  $("dshades").parentElement.hidden = onlyOn;
+  $("floors").innerHTML = D.floors.map((f,fi)=>{
+    const items = f.areas.flatMap(a=>a.items), on = floorsOn[fi];
+    const keep = i => !onlyOn || i.state==="on";
+    const areas = f.areas.map(a=>({...a, shown:a.items.filter(keep)})).filter(a=>a.shown.length);
+    if (!areas.length) return "";
     // Rooms with several things get a heading; single-control rooms gather into one quiet list.
-    const multi = f.areas.filter(a=>a.items.length>1), single = f.areas.filter(a=>a.items.length===1);
-    const blocks = multi.map(a=>`<div class="room"><h3>${esc(a.name)}</h3>${a.items.map(i=>row(i,i.name)).join("")}</div>`);
-    if (single.length) blocks.push(`<div class="room">${multi.length?"<h3>Elsewhere</h3>":""}${single.map(a=>row(a.items[0], a.name)).join("")}</div>`);
-    return `<section class="floor"><h2>${esc(FLOOR[f.id]||f.name)} <span>${on} of ${items.length} on</span></h2><div class="rooms">${blocks.join("")}</div></section>`;
-  }).join("");
+    const multi = areas.filter(a=>a.items.length>1), single = areas.filter(a=>a.items.length===1);
+    const blocks = multi.map(a=>`<div class="room"><h3>${esc(a.name)}</h3>${a.shown.map(i=>devRow(i,i.name)).join("")}</div>`);
+    if (single.length) blocks.push(`<div class="room">${multi.length?"<h3>Elsewhere</h3>":""}${single.map(a=>devRow(a.items[0], a.name)).join("")}</div>`);
+    return `<section class="floor" id="floor-${esc(f.id)}"><h2>${esc(FLOOR[f.id]||f.name)} <span>${on} of ${items.length} on</span></h2><div class="rooms">${blocks.join("")}</div></section>`;
+  }).join("") || `<p class="err">Everything's off.</p>`;
+  renderPinned();
 }
 document.addEventListener("input",e=>{ const r=e.target.closest("input[data-l]"); if (r) r.style.setProperty("--v", r.value+"%"); });
 document.addEventListener("change",e=>{
@@ -357,10 +408,16 @@ async function act(body, el, after){
   try{ await fetch("api/do",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); }
   finally{ setTimeout(after||refresh,900); setTimeout(()=>el?.classList.remove("busy"),900); }
 }
-function refresh(){ load(); if (view==="devices") loadDevices(); }
+function refresh(){ load(); if (view==="devices" || pins.length) loadDevices(); }
 document.addEventListener("click",e=>{
   const tab = e.target.closest(".app-tabs button, [data-go]");
-  if (tab){ show(tab.dataset.v || tab.dataset.go); return; }
+  if (tab){ if (tab.hasAttribute("data-edit")) editPins = true; show(tab.dataset.v || tab.dataset.go); return; }
+  const pin = e.target.closest("[data-pin]");
+  if (pin){ const id = pin.dataset.pin; pins = pins.includes(id) ? pins.filter(x=>x!==id) : [...pins, id]; savePins(); renderDevices(); return; }
+  if (e.target.closest("[data-filter]")){ onlyOn = !onlyOn; renderDevices(); return; }
+  if (e.target.closest("[data-editpins]")){ editPins = !editPins; renderDevices(); return; }
+  const fl = e.target.closest("[data-floor]");
+  if (fl){ if (onlyOn){ onlyOn=false; renderDevices(); } $("floor-"+fl.dataset.floor)?.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"}); return; }
   const d = e.target.closest(".tg");
   if (d){ d.setAttribute("aria-pressed", d.getAttribute("aria-pressed")!=="true"); act({entity:d.dataset.d, op: d.getAttribute("aria-pressed")==="true"?"on":"off"}, d, loadDevices); return; }
   const b = e.target.closest(".act");
@@ -380,7 +437,7 @@ fig.addEventListener("pointerdown",scrubAt);
 fig.addEventListener("pointerleave",()=>{ scrub=null; if (S) draw(); });
 fig.addEventListener("pointerup",ev=>{ if (ev.pointerType!=="mouse"){ setTimeout(()=>{scrub=null; if (S) draw();},1600); } });
 
-load(); setInterval(refresh,30000);
+load(); if (pins.length) loadDevices(); renderPinned(); setInterval(refresh,30000);
 try{ const v = sessionStorage.getItem("house-view"); if (v && v!=="now") show(v); }catch(e){}
 document.addEventListener("visibilitychange",()=>{ if (!document.hidden) refresh(); });
 </script>
