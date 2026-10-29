@@ -12,4 +12,4 @@ Add this repository in Home Assistant under **Settings → Apps → ⋮ → Repo
 
 ## Shared UI
 
-`shared/` holds the app bar (`appnav.js`) and typeface used by every app with a page (House, Frame). Edit it there, then run `tools/sync-shared` to copy it into each app; `tests/test_shared_in_sync.py` fails if a copy drifts.
+`shared/` holds the design tokens (`tokens.css`: palette, type scale, buttons, controls, layout width), the app bar (`appnav.js`) and the typeface used by every app with a page (House, Frame). Apps keep only their own layout; colours and type come from the tokens. Edit it there, then run `tools/sync-shared` to copy it into each app; `tests/test_shared_in_sync.py` fails if a copy drifts.
