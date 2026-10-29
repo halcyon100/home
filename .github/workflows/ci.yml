@@ -21,14 +21,14 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install -r requirements-dev.txt -r circadian/requirements.txt -r house/requirements.txt -r frame/requirements.txt
+      - run: pip install -r requirements-dev.txt -r circadian/requirements.txt -r house/requirements.txt -r frame/requirements.txt -r music/requirements.txt
       # Known security holes in what the apps install fail the check.
       - run: |
-          for r in circadian frame house; do pip-audit --strict -r $r/requirements.txt; done
+          for r in circadian frame house music; do pip-audit --strict -r $r/requirements.txt; done
       - run: ruff check .
       - run: python -m pytest -q tests
       - run: cd circadian && CIRCADIAN_STATE=$RUNNER_TEMP/circadian.json python -m pytest -q tests
-      - run: python -m py_compile frame/frame_app.py house/house/server.py
+      - run: python -m py_compile frame/frame_app.py house/house/server.py music/music/server.py music/music/listen.py
       - run: node --check shared/appnav.js
 
   # Passwords, keys and tokens never get into the code: any in the history fails the check.

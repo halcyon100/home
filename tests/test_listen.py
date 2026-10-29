@@ -2,7 +2,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "house" / "house"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "music" / "music"))
 import listen  # noqa: E402
 
 

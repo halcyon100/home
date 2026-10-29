@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Music</title>
+<link rel="stylesheet" href="shared/tokens.css?v=29692212">
+<script src="shared/appnav.js?v=29692212"></script>
+<style>
+main{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(12px,1.8vw,22px) var(--gut) 0}
+body{padding:env(safe-area-inset-top) 0 calc(var(--gut)*2)}
+h2{font-size:var(--s0);font-weight:600;font-stretch:88%;margin:0 0 .9em;letter-spacing:-.005em}
+h2 span{font-weight:400;color:var(--quiet);margin-left:.5em}
+
+/* Now: what's playing, room by room */
+.groups{display:grid;gap:clamp(20px,3vw,32px);grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));margin-bottom:clamp(36px,5vw,64px)}
+.grp{display:grid;grid-template-columns:clamp(88px,22vw,132px) 1fr;gap:16px 20px;align-items:start;padding-top:18px;border-top:1px solid var(--hair)}
+.grp .art{aspect-ratio:1;background:var(--well);border-radius:2px;overflow:hidden;display:grid;place-items:center;color:var(--quiet);font-size:var(--s-1);font-stretch:84%}
+.grp .art img{width:100%;height:100%;object-fit:cover;display:block}
+.grp .t{margin:0;font-size:var(--s1);line-height:1.15;font-weight:560;font-stretch:112%;letter-spacing:-.02em;overflow-wrap:anywhere}
+.grp .a{margin:.2em 0 0;color:var(--quiet);font-stretch:92%}
+.grp .ctl{display:flex;gap:8px;margin-top:12px}
+.grp .members{grid-column:1/-1;display:grid;gap:6px}
+.mem{display:grid;grid-template-columns:minmax(0,9.5em) 1fr auto;gap:12px;align-items:center;font-stretch:90%}
+.mem .x{appearance:none;border:0;background:none;color:var(--quiet);font-size:var(--s-1);font-stretch:84%;cursor:pointer;padding:.3em 0}
+.mem .x:hover{color:var(--ink)}
+.add{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.chip{appearance:none;border:1px dashed var(--hair);background:none;border-radius:var(--r-pill);padding:.25em .8em .3em;font-size:var(--s-1);font-stretch:86%;color:var(--quiet);cursor:pointer}
+.chip:hover{color:var(--ink);border-color:var(--ink)}
+.tvb{display:inline-block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-stretch:90%;border:1px solid var(--hair);border-radius:2px;padding:.1em .45em;margin-left:.5em;color:var(--quiet);vertical-align:.15em}
+.rooms{display:grid;gap:clamp(28px,4vw,48px) clamp(28px,4vw,56px);grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr))}
+.rm{display:grid;grid-template-columns:minmax(0,1fr) 7.5em auto;gap:12px;align-items:center;padding:.62em 0;border-top:1px solid var(--hair)}
+.rm b{font-weight:480;font-stretch:94%}
+.rm small{display:block;color:var(--quiet);font-size:var(--s-1);font-stretch:84%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rm .btn{white-space:nowrap}
+.tt{margin-top:clamp(40px,5vw,64px);padding-top:18px;border-top:1px solid var(--hair);display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
+.tt h2{margin:0}
+.tt p{margin:0;color:var(--quiet);font-size:var(--s-1);font-stretch:86%;flex-basis:100%}
+.ib.sm{width:34px;height:34px}
+/* Listen: the week's records, set like a magazine page */
+.lk{font-size:var(--s-1);font-stretch:82%;color:var(--quiet);letter-spacing:.01em;display:flex;flex-wrap:wrap;gap:.3em 1.4em}
+.lk b{color:var(--ink);font-weight:500}
+.lh{margin:.35em 0 .2em;font-size:var(--s5);line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.022em}
+.lh em{font-style:normal;font-weight:520;font-stretch:122%;letter-spacing:-.035em}
+.lbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:clamp(18px,2.4vw,28px) 0 clamp(22px,3vw,36px)}
+.seg{display:inline-flex;border:1px solid var(--hair);border-radius:var(--r-pill);overflow:hidden}
+.seg button{appearance:none;border:0;background:none;padding:.42em .95em .46em;font-size:var(--s-1);font-stretch:86%;color:var(--quiet);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+.lbar .t-quiet{margin-right:-6px}
+.recs{display:grid;gap:clamp(34px,4vw,56px) clamp(22px,3vw,40px);grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.rec{display:flex;flex-direction:column;min-width:0}
+.rec .art{position:relative;aspect-ratio:1;background:var(--well);border-radius:2px;overflow:hidden}
+.rec .art img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.rec:hover .art img{transform:scale(1.015)}
+.rec .art .tag{position:absolute;left:10px;top:10px;background:var(--ground);color:var(--ink);font-size:11.5px;font-stretch:84%;letter-spacing:.06em;text-transform:uppercase;padding:.3em .6em .32em;border-radius:2px}
+.rec .label{margin:14px 0 6px;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;font-stretch:118%;font-weight:560;color:var(--quiet);
+  display:flex;justify-content:space-between;gap:1em}
+.rec .label span:last-child{letter-spacing:.04em;font-stretch:84%;font-weight:400;text-transform:none}
+.rec h3{margin:0;font-size:var(--s3);line-height:1.02;font-weight:560;font-stretch:118%;letter-spacing:-.03em;overflow-wrap:anywhere}
+.rec .al{margin:.18em 0 0;font-size:var(--s1);font-weight:330;font-stretch:96%;letter-spacing:-.01em;line-height:1.2}
+.rec .why{margin:.75em 0 0;color:var(--quiet);line-height:1.45;max-width:46ch}
+.rec .src{margin:.5em 0 0;font-size:var(--s-1);font-stretch:84%;color:var(--quiet)}
+.rec .src a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
+.rec .row{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:16px}
+.rec .row .grow{flex:1}
+.ib{appearance:none;width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--hair);border-radius:50%;background:none;cursor:pointer;color:var(--quiet)}
+.ib svg{width:17px;height:17px}
+.ib:hover{color:var(--ink);border-color:var(--ink)}
+.ib[aria-pressed="true"]{background:var(--light);border-color:var(--light);color:var(--on-light)}
+.rec .play{display:inline-flex;align-items:center;gap:.5em}
+.rec .play svg{width:12px;height:12px}
+.rec .play.busy{opacity:.5}
+.rec .sp{font-size:var(--s-1);font-stretch:86%;color:var(--quiet);text-decoration:none;white-space:nowrap}
+.rec .sp:hover{color:var(--ink)}
+.rec.liked .art{box-shadow:0 0 0 2px var(--light)}
+.rec.passed{opacity:.55}
+.lfoot{margin-top:clamp(40px,5vw,64px);display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;color:var(--quiet);font-size:var(--s-1);font-stretch:86%}
+.lwait{color:var(--quiet);font-stretch:88%}
+.lwait b{color:var(--ink);font-weight:500}
+
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<app-bar app="music"><nav slot="tabs" class="app-tabs" role="tablist" aria-label="Music">
+  <button role="tab" data-v="now" aria-selected="true">Now</button>
+  <button role="tab" data-v="records" aria-selected="false">Records</button>
+</nav></app-bar>
+<main>
+<section id="v-now" role="tabpanel" aria-label="Now">
+  <header class="lk" id="nk"></header>
+  <h1 class="lh" id="nh">Listening to the house</h1>
+  <div class="lbar" id="nbar"></div>
+  <div class="groups" id="groups"></div>
+  <div class="rooms" id="rooms"></div>
+  <div class="tt" id="tt"></div>
+</section>
+<section id="v-records" role="tabpanel" aria-label="Records" hidden>
+  <header class="lk" id="lk"></header>
+  <h1 class="lh" id="lh">Records for the week</h1>
+  <div class="lbar" id="lbar"></div>
+  <div class="recs" id="recs"></div>
+  <footer class="lfoot" id="lfoot"></footer>
+</section>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const FLOORS = {main:"Main level", upper:"Upstairs", basement:"Downstairs", outside:"Outside"};
+let view = "now", N = null, nowTimer = null, dragging = false;
+
+function show(v){
+  view = v;
+  document.querySelectorAll(".app-tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.v===v));
+  ["now","records"].forEach(x=>$("v-"+x).hidden = x!==v);
+  try{ sessionStorage.setItem("music-view", v); }catch(e){}
+  if (v==="records") loadListen(); else loadNow();
+  window.scrollTo(0,0);
+}
+document.addEventListener("click", e=>{ const t = e.target.closest(".app-tabs button"); if (t) show(t.dataset.v); });
+
+/* Listen */
+let L = null, place = "main", listenTimer = null;
+try{ place = localStorage.getItem("music-place") || "main"; }catch(e){}
+const ICON = {
+  up:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6 8.2 8.8 2.6c1 0 1.7.8 1.6 1.8l-.3 2.6h3.6c.9 0 1.6.9 1.4 1.8l-1.1 5c-.2.7-.8 1.2-1.5 1.2H6m0-6.8v6.8m0-6.8H3.4v6.8H6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`,
+  down:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M12 9.8 9.2 15.4c-1 0-1.7-.8-1.6-1.8l.3-2.6H4.3c-.9 0-1.6-.9-1.4-1.8l1.1-5c.2-.7.8-1.2 1.5-1.2H12m0 6.8V3m0 6.8h2.6V3H12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`,
+  x:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M5 5l8 8M13 5l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  play:`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>`,
+};
+async function loadListen(){
+  try{
+    const r = await fetch("api/listen",{cache:"no-store"}); L = await r.json(); renderListen();
+  }catch(e){ $("recs").innerHTML = `<p class="lwait">Couldn't reach the record shelf.</p>`; }
+  clearTimeout(listenTimer);
+  if (L && L.busy && view==="records") listenTimer = setTimeout(loadListen, 5000);
+}
+function renderListen(){
+  const picks = L.picks||[], nw = picks.filter(p=>p.kind==="new").length, sh = picks.length-nw;
+  const when = L.generated ? new Date(L.generated) : null;
+  $("lk").innerHTML = `<span><b>${esc(L.season||"This week")}</b></span>`+
+    (picks.length?`<span><b>${nw}</b> new ${nw===1?"record":"records"}${sh?`, <b>${sh}</b> from your shelf`:""}</span>`:"")+
+    (when?`<span>Picked ${when.toLocaleDateString(undefined,{weekday:"long"})} from this season's reviews</span>`:"");
+  $("lh").innerHTML = picks.length ? `Records for <em>the week</em>` : `Nothing on the shelf <em>yet</em>`;
+  $("lbar").innerHTML = `<span class="t-quiet">Play on</span><div class="seg" role="group" aria-label="Play on">${
+    Object.entries(L.places||{}).map(([k,n])=>`<button data-place="${k}" aria-pressed="${k===place}">${esc(n)}</button>`).join("")}</div>`;
+  $("recs").innerHTML = picks.map(p=>{
+    const v = p.verdict, art = p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : "";
+    return `<article class="rec ${v==="up"?"liked":v==="down"?"passed":""}">
+      <div class="art">${art}${p.kind==="second"?`<span class="tag">Second listen</span>`:""}</div>
+      <div class="label"><span>${esc(p.label||p.lane||"")}</span><span>${esc(p.released||"")}</span></div>
+      <h3>${esc(p.artist)}</h3><p class="al">${esc(p.album)}</p>
+      <p class="why">${esc(p.why)}</p>
+      ${p.source?`<p class="src">${p.source_url?`<a href="${esc(p.source_url)}" target="_blank" rel="noopener">via ${esc(p.source)}</a>`:`via ${esc(p.source)}`}${p.lane&&p.label?` · ${esc(p.lane)}`:""}</p>`:""}
+      <div class="row">
+        <button class="btn small play" data-lplay="${p.id}">${ICON.play}Play</button>
+        <a class="sp grow" href="${esc(p.spotify_url)}" target="_blank" rel="noopener">Spotify ↗</a>
+        <button class="ib" data-lv="${p.id}" data-verdict="up" aria-label="More like this" aria-pressed="${v==="up"}">${ICON.up}</button>
+        <button class="ib" data-lv="${p.id}" data-verdict="down" aria-label="Less like this" aria-pressed="${v==="down"}">${ICON.down}</button>
+        <button class="ib" data-lv="${p.id}" data-verdict="dismiss" aria-label="Hide, no judgment">${ICON.x}</button>
+      </div></article>`;
+  }).join("");
+  $("lfoot").innerHTML = L.busy
+    ? `<span class="lwait"><b>Reading this season's reviews</b> and checking Spotify. A minute or two.</span>`
+    : `<span>${L.error?esc(L.error)+" ":""}New picks arrive Friday mornings. Thumbs steer the next ones; × just hides a card.</span>
+       <button class="btn ghost small" data-lrefresh>Pick again now</button>`;
+}
+async function listenPost(path, body){
+  const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})});
+  if (!r.ok) throw new Error(r.status); return r.json();
+}
+document.addEventListener("click", async e=>{
+  const pl = e.target.closest("[data-place]");
+  if (pl){ place = pl.dataset.place; try{ localStorage.setItem("music-place", place); }catch(x){} if (L) renderListen(); renderNow(); return; }
+  const lv = e.target.closest("[data-lv]");
+  if (lv){ const p = L.picks.find(x=>x.id===lv.dataset.lv), want = lv.dataset.verdict;
+    const verdict = (p && p.verdict===want && want!=="dismiss") ? null : want;
+    try{ L = await listenPost("api/listen/feedback",{id:lv.dataset.lv, verdict}); renderListen(); }catch(x){} return; }
+  const lp = e.target.closest("[data-lplay]");
+  if (lp){ lp.classList.add("busy"); lp.lastChild.textContent = "Starting";
+    try{ await listenPost("api/listen/play",{id:lp.dataset.lplay, place}); lp.lastChild.textContent = "Playing"; }
+    catch(x){ lp.lastChild.textContent = "Didn't start"; }
+    setTimeout(()=>{ lp.classList.remove("busy"); lp.lastChild.textContent = "Play"; }, 4000); return; }
+  if (e.target.closest("[data-lrefresh]")){ try{ L = await listenPost("api/listen/refresh"); renderListen(); loadListen(); }catch(x){} }
+});
+
+
+/* Now */
+const IC = {
+  prev:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M5 4v10M14 4.5v9L7 9z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>`,
+  next:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M13 4v10M4 4.5v9L11 9z" fill="currentColor" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>`,
+  pause:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6 4v10M12 4v10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`,
+  play:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6 3.8v10.4L14.2 9z" fill="currentColor"/></svg>`,
+};
+async function loadNow(){
+  clearTimeout(nowTimer);
+  try{ const r = await fetch("api/now",{cache:"no-store"}); N = await r.json(); if (!dragging) renderNow(); }
+  catch(e){ $("nh").textContent = "The speakers didn't answer."; }
+  if (view==="now" && !document.hidden) nowTimer = setTimeout(loadNow, 4000);
+}
+const vol = (room, v) => `<input type="range" min="0" max="100" value="${Math.round((v||0)*100)}" style="--v:${Math.round((v||0)*100)}%" data-vol="${esc(room)}" aria-label="${esc(room)} volume">`;
+function renderNow(){
+  if (!N || !N.rooms) return;
+  const rooms = N.rooms, byName = Object.fromEntries(rooms.map(r=>[r.name,r]));
+  // groups: one card per leader that is playing (or holds the turntable)
+  const seen = new Set(), groups = [];
+  for (const r of rooms){
+    if (seen.has(r.name)) continue;
+    const members = (r.group && r.group.length ? r.group : [r.name]).filter(n=>byName[n] || n==="Turntable");
+    const playing = r.state==="playing" || r.tv || r.line_in;
+    if (!playing) continue;
+    members.forEach(n=>seen.add(n));
+    groups.push({lead:r, members: members.filter(n=>byName[n])});
+  }
+  const idle = rooms.filter(r=>!seen.has(r.name));
+  const playingRooms = groups.reduce((n,g)=>n+g.members.length,0);
+  $("nk").innerHTML = `<span><b>${playingRooms}</b> of ${rooms.length} rooms playing</span>`+
+    (N.turntable.available?`<span>Turntable <b>${N.turntable.playing?"spinning":"ready"}</b></span>`:"");
+  const g0 = groups[0];
+  $("nh").innerHTML = !g0 ? `A <em>quiet</em> house`
+    : g0.lead.tv ? `TV in <em>${esc(g0.lead.name.toLowerCase())}</em>`
+    : g0.lead.line_in ? `The <em>turntable</em>, ${g0.members.length} ${g0.members.length===1?"room":"rooms"}`
+    : `<em>${esc(g0.lead.artist || g0.lead.title || "Music")}</em> in ${g0.members.length===1?esc(g0.lead.name.toLowerCase()):g0.members.length+" rooms"}`;
+  $("nbar").innerHTML = `<span class="t-quiet">Play on</span><div class="seg" role="group" aria-label="Play on">${
+    Object.entries(FLOORS).map(([k,n])=>`<button data-place="${k}" aria-pressed="${k===place}">${n}</button>`).join("")}</div>`;
+  $("groups").innerHTML = groups.map(g=>{
+    const r = g.lead, canAdd = idle.filter(x=>!x.tv);
+    const what = r.tv ? "TV sound" : r.line_in ? "Turntable" : (r.title || "Playing");
+    return `<article class="grp">
+      <div class="art">${r.art?`<img src="${esc(r.art)}" alt="">`:(r.tv?"TV":r.line_in?"Vinyl":"")}</div>
+      <div><p class="t">${esc(what)}</p><p class="a">${esc([r.artist, r.album].filter(Boolean).join(" · "))}</p>
+        ${r.tv?"":`<div class="ctl">
+          <button class="ib sm" data-op="previous" data-room="${esc(r.name)}" aria-label="Previous">${IC.prev}</button>
+          <button class="ib sm" data-op="play_pause" data-room="${esc(r.name)}" aria-label="${r.state==="playing"?"Pause":"Play"}">${r.state==="playing"?IC.pause:IC.play}</button>
+          <button class="ib sm" data-op="next" data-room="${esc(r.name)}" aria-label="Next">${IC.next}</button></div>`}</div>
+      <div class="members">${g.members.map(n=>{ const m = byName[n];
+        return `<div class="mem"><span>${esc(n)}${m.tv?'<span class="tvb">TV</span>':""}</span>${vol(n, m.volume)}${g.members.length>1?`<button class="x" data-op="leave" data-room="${esc(n)}">Leave</button>`:"<span></span>"}</div>`;}).join("")}</div>
+      ${r.tv||!canAdd.length?"":`<div class="add">${canAdd.map(x=>`<button class="chip" data-op="join" data-room="${esc(x.name)}" data-to="${esc(r.name)}">+ ${esc(x.name)}</button>`).join("")}</div>`}
+    </article>`;
+  }).join("");
+  const byFloor = {};
+  idle.forEach(r=>{ (byFloor[r.floor]=byFloor[r.floor]||[]).push(r); });
+  $("rooms").innerHTML = Object.keys(FLOORS).filter(f=>byFloor[f]).map(f=>`<div><h2>${FLOORS[f]}<span>${byFloor[f].length}</span></h2>${
+    byFloor[f].map(r=>`<div class="rm"><span><b>${esc(r.name)}</b><small>${r.state==="unavailable"?"Not answering":r.tv_on?"Apple TV on":r.state==="paused"?"Paused":"Quiet"}</small></span>${vol(r.name, r.volume)}${
+      g0 && !g0.lead.tv ? `<button class="btn ghost small" data-op="join" data-room="${esc(r.name)}" data-to="${esc(g0.lead.name)}">Join</button>` : "<span></span>"}</div>`).join("")}</div>`).join("");
+  $("tt").innerHTML = N.turntable.available ? `<h2>Turntable</h2>
+    <button class="btn small" data-turntable>${N.turntable.playing?"Also play on":"Put it on"} ${esc(FLOORS[place].toLowerCase())}</button>
+    <p>Drop the needle, then send it to a floor. It plays through the Sonos Connect in the nook.</p>` : "";
+}
+async function act(body){
+  try{ await fetch("api/act",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); }
+  finally{ setTimeout(loadNow, 700); }
+}
+document.addEventListener("click", e=>{
+  const b = e.target.closest("[data-op]");
+  if (b){ act({op:b.dataset.op, room:b.dataset.room, to:b.dataset.to}); b.classList.add("busy"); return; }
+  if (e.target.closest("[data-turntable]")) act({op:"turntable", place});
+});
+document.addEventListener("input", e=>{ const r = e.target.closest("input[data-vol]"); if (r){ dragging = true; r.style.setProperty("--v", r.value+"%"); } });
+document.addEventListener("change", e=>{ const r = e.target.closest("input[data-vol]"); if (r){ dragging = false; act({op:"volume", room:r.dataset.vol, value:r.value/100}); } });
+document.addEventListener("visibilitychange", ()=>{ if (!document.hidden) (view==="now"?loadNow:loadListen)(); });
+
+try{ const v = sessionStorage.getItem("music-view"); if (v==="records") show("records"); else loadNow(); }catch(e){ loadNow(); }
+</script>
+</body>
+</html>

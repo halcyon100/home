@@ -2,7 +2,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-COPIES = ["house/house/www/shared", "frame/shared"]
+COPIES = ["house/house/www/shared", "music/music/www/shared", "frame/shared"]
 
 
 def test_copies_match_shared():
