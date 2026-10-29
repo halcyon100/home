@@ -16,7 +16,7 @@ from astral.sun import sun as astral_sun
 from engine import (KEEP_OFF, OFF, ON, SHUT, Overrides, Schedule, daylight_zones_from_options,
                     keyframes_from_options, pct_to_255, resolve)
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -342,6 +342,10 @@ class Circadian:
                 if e in lit:
                     log.info("Boost off: %s off again", e)
                     await self.call("light", "turn_off", e, {"transition": 5})
+                    z = self.zone_of.get(e)
+                    if z is not None and z.bright:
+                        # it was off for daylight before the boost: let daylight bring it back at dusk
+                        self.daylight_off.add(e)
                 else:
                     await self.apply(e, transition=5, why="boost off")
             except Exception as ex:
@@ -798,23 +802,10 @@ class Circadian:
             "lights": lights,
         }
 
-    async def serve_api(self, port: int):
-        async def day(_req):
-            return web.json_response(self.day_report())
-        api = web.Application()
-        api.router.add_get("/api/day", day)
-        runner = web.AppRunner(api, access_log=None)
-        await runner.setup()
-        await web.TCPSite(runner, "0.0.0.0", port).start()
-        log.info("Read-only API on port %d", port)
-
     async def run(self):
         await self.start()
         self.load_state()
-        try:
-            await self.serve_api(int(self.opts.get("api_port", 8810)))
-        except Exception as ex:
-            log.warning("API not started: %s", ex)
+        CURRENT["app"] = self
         last_tick = None
         while True:
             self.reset_check()
@@ -827,6 +818,24 @@ class Circadian:
             await asyncio.sleep(15)
 
 
+# The read-only API outlives reconnects: it is started once and always reports the live session.
+CURRENT: dict = {"app": None}
+
+
+async def serve_api(port: int):
+    async def day(_req):
+        app = CURRENT["app"]
+        if app is None:
+            return web.json_response({"error": "starting"}, status=503)
+        return web.json_response(app.day_report())
+    api = web.Application()
+    api.router.add_get("/api/day", day)
+    runner = web.AppRunner(api, access_log=None)
+    await runner.setup()
+    await web.TCPSite(runner, "0.0.0.0", port).start()
+    log.info("Read-only API on port %d", port)
+
+
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
                         datefmt="%H:%M:%S")
@@ -834,10 +843,16 @@ async def main():
     url = os.environ.get("HA_WS", "ws://supervisor/core/websocket")
     token = os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HA_TOKEN", "")
     backoff = 5
+    try:
+        await serve_api(int(opts.get("api_port", 8810)))
+    except Exception as ex:
+        log.warning("API not started: %s", ex)
     while True:
         ha = HA(url, token)
         try:
             await ha.connect()
+            backoff = 5
+            CURRENT["app"] = None
             app = Circadian(opts, ha)
             reader = asyncio.create_task(ha.reader())
             runner = asyncio.create_task(app.run())

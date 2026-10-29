@@ -563,3 +563,32 @@ async def test_boost_eases_from_a_set_time_to_the_next_brightness_keyframe(aioht
     s, e = c.boost_window(c.now())
     assert (s.hour, s.minute, e.hour, e.minute) == (18, 30, 21, 30)   # sunset's color keyframe doesn't end it
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_boost_off_in_daylight_lets_dusk_bring_lights_back(aiohttp_server):
+    # Bright House on and off at midday must not cost a daylight-dimmed light its return at dusk.
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(12, 0), TZ))
+    opts = dict(boost_options(), daylight=[{"name": "kitchen", "sensor": "sensor.lux", "off_above": 250,
+                                            "on_below": 160, "off_after_minutes": 10,
+                                            "on_after_minutes": 3, "lights": ["light.island"]}])
+    fake, c, ha, reader = await boot(aiohttp_server, opts, clock)
+    await set_lux(fake, 400)
+    clock.dt += timedelta(minutes=11)
+    await c.daylight_step()                      # bright; the island is already off
+    await set_boost(fake, True)
+    assert "light.island" in c.boost_lit
+    await set_boost(fake, False)
+    assert ("light", "turn_off", "light.island", {"transition": 5}) in fake.calls
+    assert "light.island" in c.daylight_off
+    old = fake.states["light.island"]
+    fake.states["light.island"] = dict(old, state="off", context={"id": "x", "user_id": ME})
+    await fake.event("state_changed", {"entity_id": "light.island", "old_state": old,
+                                       "new_state": fake.states["light.island"]})
+    fake.calls.clear()
+    await set_lux(fake, 100)
+    clock.dt += timedelta(minutes=4)
+    await c.daylight_step()
+    await asyncio.sleep(0.05)
+    assert any(x[1] == "turn_on" and x[2] == "light.island" for x in fake.calls)
+    reader.cancel(); await ha.close()
