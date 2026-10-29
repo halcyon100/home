@@ -1,0 +1,37 @@
+name: House
+version: "0.1.0"
+slug: house
+description: A quiet portal to the house - today's light, shortcuts, motion and what happened.
+url: https://github.com/halcyon100/home/tree/main/house
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+homeassistant_api: true
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:home-outline
+panel_title: House
+panel_admin: false
+options:
+  circadian_url: http://3dd8a0cc-circadian:8810
+  weather: weather.forecast_home
+  shortcuts: []
+  shades: []
+  motion: []
+  activity: []
+schema:
+  circadian_url: url
+  weather: str?
+  shortcuts:
+    - name: str
+      entity: str
+      note: str?
+  shades:
+    - str
+  motion:
+    - str
+  activity:
+    - str

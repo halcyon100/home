@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>House</title>
+<style>
+@font-face{font-family:"Archivo";src:url("fonts/archivo.woff2") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%;font-display:swap}
+
+/* Tokens. Day and night follow the sun, not the phone. */
+:root{
+  --ground:#E4E7E3; --ink:#1B2124; --quiet:#687174; --hair:#C3C9C5; --well:#D7DCD8;
+  --light:#FFD9A8;               /* replaced live by the house's colour temperature */
+  --step:clamp(15px,1.05vw + 11px,17px);
+  --s-1:calc(var(--step)*.8125); --s0:var(--step); --s1:calc(var(--step)*1.3125); --s3:calc(var(--step)*2.25); --s5:clamp(34px,5.4vw,64px);
+  --gut:clamp(16px,4vw,48px);
+}
+:root[data-sky="night"]{--ground:#0E151C; --ink:#D5DCE0; --quiet:#7B8790; --hair:#233039; --well:#141E27}
+*{box-sizing:border-box}
+html{background:var(--ground);color:var(--ink);-webkit-text-size-adjust:100%}
+body{margin:0;font:400 var(--s0)/1.45 "Archivo",system-ui,sans-serif;font-stretch:100%;font-feature-settings:"tnum" 1,"case" 1;
+  padding:max(var(--gut),env(safe-area-inset-top)) var(--gut) calc(var(--gut)*2);transition:background-color 1.2s, color 1.2s}
+main{max-width:1180px;margin:0 auto}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+
+/* Masthead: the facts of the day in one quiet line */
+.mast{display:flex;flex-wrap:wrap;gap:.25em 1.6em;font-stretch:82%;font-size:var(--s-1);color:var(--quiet);letter-spacing:.01em}
+.mast b{font-weight:500;color:var(--ink)}
+
+/* Hero: the state of the light, as a sentence */
+.say{margin:.9em 0 .55em;font-size:var(--s5);line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.022em;max-width:17ch}
+.say .n{font-weight:520;font-stretch:122%;letter-spacing:-.035em}
+.say .k{font-stretch:122%;font-weight:520;letter-spacing:-.035em}
+.say small{display:block;margin-top:.45em;font-size:var(--s1);line-height:1.3;font-weight:380;font-stretch:88%;letter-spacing:0;color:var(--quiet);max-width:38ch}
+
+/* The day, drawn */
+.day{position:relative;margin:clamp(20px,3vw,36px) 0 0;touch-action:pan-y;cursor:crosshair}
+.day svg{display:block;width:100%;height:clamp(170px,26vw,280px);overflow:visible}
+.axis{display:flex;justify-content:space-between;font-stretch:78%;font-size:var(--s-1);color:var(--quiet);margin-top:.5em}
+.axis span:nth-child(odd){visibility:visible}
+.legend{display:flex;flex-wrap:wrap;gap:.3em 1.4em;margin-top:.9em;font-size:var(--s-1);font-stretch:82%;color:var(--quiet)}
+.legend i{display:inline-block;width:18px;height:0;border-top:1.5px solid var(--ink);vertical-align:.3em;margin-right:.45em}
+.legend i.base{border-top:1px dashed var(--quiet)}
+.legend i.sw{height:9px;border:0;background:linear-gradient(90deg,#ffb46b,#fff1e0,#dfe8ff);vertical-align:0}
+
+/* Lower field */
+.field{display:grid;gap:clamp(36px,5vw,64px) clamp(28px,4vw,56px);margin-top:clamp(44px,6vw,80px);grid-template-columns:1fr}
+@media (min-width:760px){.field{grid-template-columns:1fr 1fr}}
+@media (min-width:1080px){.field{grid-template-columns:1.1fr 1fr 1.25fr}}
+h2{font-size:var(--s0);font-weight:600;font-stretch:88%;margin:0 0 .9em;letter-spacing:-.005em}
+h2 span{font-weight:400;color:var(--quiet);margin-left:.5em}
+
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.act{appearance:none;border:1px solid var(--hair);background:transparent;border-radius:3px;text-align:left;padding:.85em .9em .8em;min-height:82px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;gap:.4em;transition:border-color .2s,background-color .25s}
+.act:hover{border-color:var(--ink)}
+.act strong{font-weight:540;font-stretch:96%;font-size:var(--s1);line-height:1.1;letter-spacing:-.01em}
+.act em{font-style:normal;font-size:var(--s-1);font-stretch:84%;color:var(--quiet)}
+.act[aria-pressed="true"]{background:var(--light);border-color:var(--light);color:#1B2124}
+.act[aria-pressed="true"] em{color:#1B2124;opacity:.72}
+.act.busy{opacity:.55}
+
+dl{margin:0;display:grid;grid-template-columns:1fr auto;gap:.55em 1.2em}
+dt{font-stretch:96%}
+dd{margin:0;text-align:right;font-stretch:84%;color:var(--quiet);white-space:nowrap}
+dd.live{color:var(--ink)}
+dd.live::before{content:"";display:inline-block;width:.5em;height:.5em;border-radius:50%;background:var(--light);box-shadow:0 0 0 1px color-mix(in srgb,var(--ink) 25%,transparent);margin-right:.5em;vertical-align:.08em}
+dd.gone{color:var(--quiet);opacity:.6}
+.sub{margin-top:2.2em}
+
+ol.log{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:auto 1fr;gap:.5em 1.1em}
+ol.log li{display:contents}
+ol.log time{font-stretch:78%;color:var(--quiet);text-align:right;font-size:var(--s-1);padding-top:.12em}
+ol.log .day-break{grid-column:1/-1;font-stretch:84%;font-size:var(--s-1);color:var(--quiet);margin-top:.8em}
+.shade{display:flex;gap:.35em;justify-content:flex-end}
+.shade button{appearance:none;border:0;background:none;padding:.1em .2em;font-stretch:80%;font-size:var(--s-1);color:var(--quiet);cursor:pointer;text-decoration:underline;text-decoration-color:var(--hair);text-underline-offset:3px}
+.shade button:hover{color:var(--ink);text-decoration-color:var(--ink)}
+.err{color:var(--quiet);font-stretch:88%}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <header class="mast" id="mast"></header>
+  <h1 class="say" id="say" aria-live="polite">Reading the house</h1>
+  <figure class="day" id="day" aria-label="Today's light, brightness over the day, coloured by colour temperature">
+    <svg id="g" viewBox="0 0 1000 300" preserveAspectRatio="none" role="img"></svg>
+    <div class="axis" aria-hidden="true"><span>Midnight</span><span>3</span><span>6 am</span><span>9</span><span>Noon</span><span>3</span><span>6 pm</span><span>9</span><span>Midnight</span></div>
+    <figcaption class="legend" id="legend"></figcaption>
+  </figure>
+  <section class="field">
+    <div>
+      <h2>Shortcuts</h2>
+      <div class="acts" id="acts"></div>
+      <div class="sub"><h2>Light right now</h2><dl id="status"></dl></div>
+    </div>
+    <div>
+      <h2>Motion</h2><dl id="motion"></dl>
+      <div class="sub"><h2>Curtains and shades</h2><dl id="shades"></dl></div>
+    </div>
+    <div>
+      <h2>Today in the house</h2><ol class="log" id="log"></ol>
+    </div>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const API = new URLSearchParams(location.search).has("mock") ? "mock_state.json" : "api/state";
+let S = null, scrub = null;
+
+/* Colour temperature to sRGB (Tanner Helland's fit), for drawing the light as it looks. */
+function kRGB(k){
+  const t = k/100; let r,g,b;
+  if (t <= 66){ r = 255; g = 99.4708025861*Math.log(t)-161.1195681661; }
+  else { r = 329.698727446*Math.pow(t-60,-0.1332047592); g = 288.1221695283*Math.pow(t-60,-0.0755148492); }
+  b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231*Math.log(t-10)-305.0447927307;
+  const c = v => Math.max(0,Math.min(255,Math.round(v)));
+  return [c(r),c(g),c(b)];
+}
+const css = ([r,g,b],a=1) => a===1 ? `rgb(${r} ${g} ${b})` : `rgb(${r} ${g} ${b} / ${a})`;
+
+const tf = new Intl.DateTimeFormat(undefined,{hour:"numeric",minute:"2-digit"});
+const t = s => tf.format(new Date(s)).replace(/\s?([AP])M/i,(m,p)=>" "+p.toLowerCase()+"m");
+function ago(s){
+  const m = Math.round((Date.now()-new Date(s))/60000);
+  if (m < 1) return "just now"; if (m < 60) return m+" min ago";
+  const h = Math.round(m/60); if (h < 24) return h+" h ago";
+  return Math.round(h/24)+" d ago";
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* The house curve: average level of the main-floor lights that have one, and their median colour. */
+function houseCurve(day, boosted){
+  const ids = day.boost.lights.length ? day.boost.lights : Object.keys(day.lights);
+  const n = day.lights[ids[0]]?.curve.length || 145, out = [];
+  for (let i=0;i<n;i++){
+    let sum=0, c=0; const ks=[];
+    for (const e of ids){ const p = day.lights[e]?.curve[i]; if (p){ sum+=p[0]; c++; if (p[1]) ks.push(p[1]); } }
+    let b = c ? sum/c : 0;
+    const m = boosted && day.boost.on && day.boost.mult ? day.boost.mult[i] : null;
+    if (m) b = Math.min(100,b*m);
+    ks.sort((a,b)=>a-b);
+    out.push({b, k: ks.length ? ks[ks.length>>1] : 2700, lit: c});
+  }
+  return out;
+}
+
+function draw(){
+  const d = S.circadian, g = $("g");
+  if (!d){ g.innerHTML=""; return; }
+  const W=1000,H=300,top=12,bot=288;
+  const d0 = new Date(d.day_start), span = 24*3600e3;
+  const X = s => (new Date(s)-d0)/span*W;
+  const base = houseCurve(d,false), eff = houseCurve(d,true);
+  const n = eff.length, xi = i => i/(n-1)*W, yv = b => bot-(b/100)*(bot-top);
+  const night = `<rect x="0" y="0" width="${X(d.sunrise).toFixed(1)}" height="${H}" fill="var(--well)"/><rect x="${X(d.sunset).toFixed(1)}" y="0" width="${(W-X(d.sunset)).toFixed(1)}" height="${H}" fill="var(--well)"/>`;
+  const stops = eff.map((p,i)=>`<stop offset="${(i/(n-1)).toFixed(4)}" stop-color="${css(kRGB(p.k))}"/>`).join("");
+  const line = arr => arr.map((p,i)=>`${i?"L":"M"}${xi(i).toFixed(1)} ${yv(p.b).toFixed(1)}`).join("");
+  const area = line(eff)+`L${W} ${bot}L0 ${bot}Z`;
+  const differs = eff.some((p,i)=>Math.abs(p.b-base[i].b)>0.5);
+  const kf = {}; for (const k of d.keyframes){ const x = X(k.at).toFixed(0); (kf[x] ||= []).push(k.name); }
+  const ticks = Object.keys(kf).map(x=>`<line x1="${x}" x2="${x}" y1="${bot}" y2="${bot+7}" stroke="var(--quiet)" stroke-width="1" vector-effect="non-scaling-stroke"><title>${esc(kf[x].join(", "))}</title></line>`).join("");
+  const nowX = X(d.now), nowI = Math.round(nowX/W*(n-1));
+  const sx = scrub ?? nowX, si = Math.max(0,Math.min(n-1,Math.round(sx/W*(n-1))));
+  g.innerHTML = `<defs><linearGradient id="lg" x1="0" x2="1" y1="0" y2="0">${stops}</linearGradient></defs>
+    ${night}
+    <path d="${area}" fill="url(#lg)" fill-opacity=".86"/>
+    ${differs?`<path d="${line(base)}" fill="none" stroke="var(--quiet)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>`:""}
+    <path d="${line(eff)}" fill="none" stroke="var(--ink)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    <line x1="0" x2="${W}" y1="${bot}" y2="${bot}" stroke="var(--hair)" vector-effect="non-scaling-stroke"/>
+    ${ticks}
+    <line x1="${nowX.toFixed(1)}" x2="${nowX.toFixed(1)}" y1="0" y2="${bot}" stroke="var(--ink)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    ${scrub!=null?`<line x1="${sx.toFixed(1)}" x2="${sx.toFixed(1)}" y1="0" y2="${bot}" stroke="var(--quiet)" stroke-width="1" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>`:""}`;
+  $("legend").innerHTML = `<span><i class="sw"></i>Colour of the light</span><span><i></i>Brightness${d.boost.on?" with Bright House":""}</span>${differs?`<span><i class="base"></i>The usual day</span>`:""}<span>Shaded: sun down</span>`;
+  hero(eff, si, nowI);
+}
+
+function hero(eff, si, nowI){
+  const d = S.circadian, p = eff[si];
+  const k = Math.round(p.k/10)*10, b = Math.round(p.b);
+  let lead, sub = "";
+  if (scrub != null && si !== nowI){
+    const when = new Date(new Date(d.day_start).getTime()+si*d.step_minutes*60e3);
+    lead = `At ${esc(t(when))}, <span class="n">${b}%</span> at <span class="k">${k.toLocaleString()} K</span>`;
+    sub = p.lit ? `${p.lit} of ${d.boost.lights.length || Object.keys(d.lights).length} main-floor lights on the schedule then.` : "Nothing on the schedule then.";
+  } else {
+    lead = `The house is at <span class="n">${b}%</span>, <span class="k">${k.toLocaleString()} K</span>`;
+    if (d.boost.on) sub = new Date(d.now) < new Date(d.boost.ease_from)
+      ? `Bright House is on. It eases back from ${t(d.boost.ease_from)} and settles into the evening by ${t(d.boost.ease_to)}.`
+      : `Bright House is easing back, settled by ${t(d.boost.ease_to)}.`;
+    else {
+      const next = d.keyframes.find(x=>new Date(x.at)>new Date(d.now));
+      sub = next ? `Following the day. Next change at ${t(next.at)}.` : "Following the day.";
+    }
+    if (!d.enabled) sub = "Circadian is paused. Lights stay where people put them.";
+    document.documentElement.style.setProperty("--light", css(kRGB(p.k)));
+  }
+  $("say").innerHTML = `${lead}.<small>${esc(sub)}</small>`;
+}
+
+function render(){
+  const s = S, d = s.circadian;
+  document.documentElement.dataset.sky = s.sun.up ? "day" : "night";
+  const now = new Date(s.now);
+  const date = new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric"}).format(now);
+  const wx = s.weather ? `<span><b>${Math.round(s.weather.temperature)}${esc(s.weather.unit||"°")}</b> ${esc(({rainy:"rain",pouring:"heavy rain",cloudy:"cloudy",partlycloudy:"partly cloudy",sunny:"sun","clear-night":"clear",snowy:"snow",fog:"fog",windy:"wind",lightning:"storms","lightning-rainy":"storms"})[s.weather.state]||s.weather.state)}</span>` : "";
+  const sun = d ? `<span>Sunrise <b>${t(d.sunrise)}</b></span><span>Sunset <b>${t(d.sunset)}</b></span>` : "";
+  $("mast").innerHTML = `<span><b>${esc(date)}</b></span><span><b>${t(now)}</b></span>${wx}${sun}`;
+  draw();
+
+  $("acts").innerHTML = s.shortcuts.map(c=>{
+    const tog = c.entity.startsWith("input_boolean."), on = c.state === "on";
+    let note = tog ? (on ? "On" : "Off") : (c.last_triggered ? "Last run "+(Date.now()-new Date(c.last_triggered) < 864e5 ? t(c.last_triggered) : ago(c.last_triggered)) : "Not run yet");
+    if (c.note) note = c.note;
+    return `<button class="act" data-e="${esc(c.entity)}" ${tog?`aria-pressed="${on}"`:""}><strong>${esc(c.name)}</strong><em>${esc(note)}</em></button>`;
+  }).join("");
+
+  if (d){
+    const L = Object.values(d.lights), on = L.filter(x=>x.state==="on");
+    const held = L.filter(x=>x.held), dz = d.zones.map(z=>[z.name, z.lux, z.bright]);
+    const row = (a,b,live) => `<dt>${a}</dt><dd${live?' class="live"':""}>${b}</dd>`;
+    $("status").innerHTML =
+      row("Lights on", `${on.length} of ${L.length}`, on.length>0) +
+      row("Following the schedule", `${on.filter(x=>!x.held).length}`) +
+      row("Set by hand", held.length ? held.map(x=>esc(x.name)).join(", ") : "None") +
+      dz.map(([n,lux,br])=>row(`Daylight, ${esc(n)}`, `${lux==null?"no reading":Math.round(lux).toLocaleString()+" lx"}, ${br?"enough":"not enough"}`, br)).join("");
+  } else $("status").innerHTML = `<dt class="err">Circadian isn't answering.</dt><dd></dd>`;
+
+  $("motion").innerHTML = s.motion.map(m=>{
+    const cls = m.state==="on" ? "live" : (m.state==="unavailable" ? "gone" : "");
+    const txt = m.state==="on" ? "Now" : m.state==="unavailable" ? "Offline" : ago(m.changed);
+    return `<dt>${esc(m.name)}</dt><dd class="${cls}">${txt}</dd>`;
+  }).join("") || `<dt class="err">No motion sensors chosen.</dt><dd></dd>`;
+
+  $("shades").innerHTML = s.shades.map(c=>{
+    const st = c.state==="unknown" ? "" : (c.position!=null && c.state==="open" && c.position<100 ? `${c.position}% open` : c.state);
+    return `<dt>${esc(c.name)} <span style="color:var(--quiet);font-stretch:84%">${esc(st)}</span></dt><dd class="shade"><button data-c="${esc(c.entity)}" data-op="open">Open</button><button data-c="${esc(c.entity)}" data-op="close">Close</button></dd>`;
+  }).join("");
+
+  let last = "";
+  $("log").innerHTML = s.activity.map(a=>{
+    const day = new Date(a.when).toDateString(), br = day!==last && last ? `<li><span class="day-break">Yesterday</span></li>` : "";
+    last = day;
+    return `${br}<li><time datetime="${esc(a.when)}">${t(a.when)}</time><span>${esc(say(a))}</span></li>`;
+  }).join("") || `<li><span></span><span class="err">Nothing yet today.</span></li>`;
+}
+
+function say(a){
+  const n = a.name || a.entity, d = a.entity.split(".")[0];
+  if (d==="script") return `${n} ran`;
+  if (d==="input_boolean") return `${n} turned ${a.state}`;
+  if (d==="binary_sensor") return `Motion, ${n.replace(/ (motion|presence)$/i,"")}`;
+  if (d==="cover") return `${n} ${a.state}`;
+  if (a.state==="on"||a.state==="off") return `${n} ${a.state}${a.by?"":", not by the house"}`;
+  return `${n}, ${a.state}`;
+}
+
+async function load(){
+  try{
+    const r = await fetch(API,{cache:"no-store"});
+    if (!r.ok) throw new Error(r.status);
+    S = await r.json(); if (S.error) throw new Error(S.error);
+    render();
+  }catch(e){
+    $("say").innerHTML = `The house didn't answer.<small>Pull to refresh, or check that Home Assistant is running.</small>`;
+  }
+}
+
+async function act(body, el){
+  if (API.startsWith("mock")) return;
+  el?.classList.add("busy");
+  try{ await fetch("api/do",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); }
+  finally{ setTimeout(load,1200); setTimeout(()=>el?.classList.remove("busy"),1200); }
+}
+document.addEventListener("click",e=>{
+  const b = e.target.closest(".act");
+  if (b){ const tog = b.hasAttribute("aria-pressed"); act({entity:b.dataset.e, op: tog ? (b.getAttribute("aria-pressed")==="true"?"off":"on") : "run"}, b); return; }
+  const c = e.target.closest("[data-c]");
+  if (c) act({entity:c.dataset.c, op:c.dataset.op}, c);
+});
+
+/* Scrub the day: point or drag across the graph to read any moment. */
+const fig = $("day");
+function scrubAt(ev){
+  const r = $("g").getBoundingClientRect();
+  scrub = Math.max(0,Math.min(1000,(ev.clientX-r.left)/r.width*1000)); if (S) draw();
+}
+fig.addEventListener("pointermove",scrubAt);
+fig.addEventListener("pointerdown",scrubAt);
+fig.addEventListener("pointerleave",()=>{ scrub=null; if (S) draw(); });
+fig.addEventListener("pointerup",ev=>{ if (ev.pointerType!=="mouse"){ setTimeout(()=>{scrub=null; if (S) draw();},1600); } });
+
+load(); setInterval(load,30000);
+document.addEventListener("visibilitychange",()=>{ if (!document.hidden) load(); });
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ from astral.sun import sun as astral_sun
 from engine import (KEEP_OFF, OFF, ON, SHUT, Overrides, Schedule, daylight_zones_from_options,
                     keyframes_from_options, pct_to_255, resolve)
 
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -781,7 +781,8 @@ class Circadian:
             s, e = self.boost_window(now)
             boost.update(since=self.boost_since.isoformat() if self.boost_since else None,
                          ease_from=s.isoformat(), ease_to=e.isoformat(),
-                         mult=[round(self.boost_mult(ts), 3) if ts >= now else None for ts in samples],
+                         mult=[round(self.boost_mult(ts), 3) if self.boost_since and ts >= self.boost_since - timedelta(minutes=10)
+                               else None for ts in samples],
                          mult_now=round(self.boost_mult(now), 3))
         return {
             "version": APP_VERSION, "now": now.isoformat(), "enabled": self.enabled(),
