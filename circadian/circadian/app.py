@@ -15,7 +15,7 @@ from astral.sun import sun as astral_sun
 from engine import (KEEP_OFF, OFF, ON, Overrides, Schedule, daylight_zones_from_options,
                     keyframes_from_options, pct_to_255)
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.3.1"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -445,8 +445,10 @@ class Circadian:
                 st = (self.states.get(e) or {}).get("state")
                 tgt = self.schedule.target_at(e, self.vnow())
                 if bright:
+                    # level: on the curve; OFF: lit but unmanaged now (e.g. balcony filaments
+                    # after the morning) - it can go off, but only comes back if it has a level
                     if (st != "on" or e in self.daylight_off or self.daylight_keep.get(e) == today
-                            or self.ov.track(e).held or tgt is None or tgt.kind != "level"):
+                            or self.ov.track(e).held or tgt is None or tgt.kind not in ("level", OFF)):
                         continue
                     self.daylight_off.add(e)
                     log.info("%s: off, daylight is enough (%s %g lx)", e, z.name, z.lux)

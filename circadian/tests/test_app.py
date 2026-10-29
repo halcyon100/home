@@ -434,3 +434,29 @@ async def test_daylight_respects_person_and_goodnight(aiohttp_server):
     await asyncio.sleep(0.02)
     assert not c.daylight_off
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_daylight_turns_off_unmanaged_light_but_does_not_restore_it(aiohttp_server):
+    # light.island is "off" (not yet managed) before 07:30 in OPTS; lit by hand, it can go off in daylight
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(7, 10), TZ))
+    opts = dict(options(), daylight=[{"name": "k", "sensor": "sensor.lux", "off_above": 250,
+                                      "on_below": 160, "lights": ["light.island"]}])
+    fake, c, ha, reader = await boot(aiohttp_server, opts, clock)
+    fake.states["light.island"] = st("light.island", "on", brightness=100)
+    c.states["light.island"] = fake.states["light.island"]
+    await set_lux(fake, 400)
+    clock.dt += timedelta(minutes=11)
+    await c.daylight_step()
+    await asyncio.sleep(0.05)
+    assert ("light", "turn_off", "light.island", {"transition": 30}) in fake.calls
+    old = fake.states["light.island"]
+    new = dict(old, state="off", context={"id": "x", "user_id": ME})
+    c.states["light.island"] = new
+    fake.calls.clear()
+    await set_lux(fake, 100)
+    clock.dt += timedelta(minutes=4)
+    await c.daylight_step()
+    await asyncio.sleep(0.05)
+    assert not any(x[1] == "turn_on" for x in fake.calls)
+    reader.cancel(); await ha.close()
