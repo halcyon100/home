@@ -65,7 +65,7 @@ def _ha_option(key, default):
         return default
 
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 TV_IP = os.environ.get("FRAME_IP") or _ha_option("tv_ip", "192.168.0.60")
 PORT = int(os.environ.get("FRAME_PORT", "8800"))
 WATCHDOG_EVERY = 60  # seconds
@@ -562,6 +562,7 @@ def set_display(on: bool, source: str) -> str:
         if TVC.power() == "on":
             TVC.turn_off()  # raises if the TV won't take it; then nothing changes
         STATE.set("asleep", True)
+        STATE.set("asleep_reason", "switch")
         STATE.set("asleep_until", next_wake_start().isoformat(timespec="minutes"))
         log.info("Display: turned off from %s; stays off until %s or until switched on",
                  source, STATE.get("asleep_until"))
@@ -675,6 +676,7 @@ def after_sunset(now=None) -> bool:
 
 def sleep_until_morning(why: str) -> None:
     STATE.set("asleep", True)
+    STATE.set("asleep_reason", "self")
     STATE.set("asleep_until", next_wake_start().isoformat(timespec="minutes"))
     log.info("Display: %s; leaving it off until %s", why, STATE.get("asleep_until"))
 
@@ -703,6 +705,11 @@ def watchdog_loop() -> None:
         STATE.last_check = datetime.now().isoformat(timespec="seconds")
         power = TVC.power()
         was, LAST["power"] = LAST["power"], power
+        if STATE.get("asleep") and STATE.get("asleep_reason") == "self" and power == "on":
+            # It went off by itself (motion detector) and has woken itself again because
+            # someone walked by: back under the app's care, so 10 PM still turns it off.
+            STATE.set("asleep", False)
+            log.info("Display: the Frame woke itself (motion); back under the app's care")
         if check_asleep():
             publish_state(power)
             STATE.last_result = "Switched off on purpose (TV is %s)" % power
