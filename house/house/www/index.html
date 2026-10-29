@@ -9,7 +9,7 @@
 <script src="shared/appnav.js"></script>
 <style>
 
-main{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(18px,3vw,32px) var(--gut) 0}
+main{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(12px,1.8vw,22px) var(--gut) 0}
 body{padding:env(safe-area-inset-top) 0 calc(var(--gut)*2)}
 
 /* Top bar: the shared app bar, with this app's views as tabs */
@@ -22,7 +22,7 @@ button{font:inherit;color:inherit}
 .mast b{font-weight:500;color:var(--ink)}
 
 /* Hero: the state of the light, as a sentence */
-.say{margin:.9em 0 .55em;font-size:var(--s5);line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.022em;max-width:17ch}
+.say{margin:.45em 0 .5em;font-size:var(--s5);line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.022em;max-width:17ch}
 .say .n{font-weight:520;font-stretch:122%;letter-spacing:-.035em}
 .say .k{font-stretch:122%;font-weight:520;letter-spacing:-.035em}
 .say small{display:block;margin-top:.45em;font-size:var(--s1);line-height:1.3;font-weight:380;font-stretch:88%;letter-spacing:0;color:var(--quiet);max-width:38ch}
@@ -40,7 +40,7 @@ button{font:inherit;color:inherit}
 /* Lower field */
 .field{display:grid;gap:clamp(36px,5vw,64px) clamp(28px,4vw,56px);margin-top:clamp(44px,6vw,80px);grid-template-columns:1fr}
 @media (min-width:760px){.field{grid-template-columns:1fr 1fr}}
-@media (min-width:1080px){.field{grid-template-columns:1.1fr 1fr 1.25fr}}
+@media (min-width:1080px){.field{grid-template-columns:1fr 1fr}}
 h2{font-size:var(--s0);font-weight:600;font-stretch:88%;margin:0 0 .9em;letter-spacing:-.005em}
 h2 span{font-weight:400;color:var(--quiet);margin-left:.5em}
 
@@ -65,9 +65,12 @@ ol.log{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:aut
 ol.log li{display:contents}
 ol.log time{font-stretch:78%;color:var(--quiet);text-align:right;font-size:var(--s-1);padding-top:.12em}
 ol.log .day-break{grid-column:1/-1;font-stretch:84%;font-size:var(--s-1);color:var(--quiet);margin-top:.8em}
-.shade{display:flex;gap:.35em;justify-content:flex-end}
-.shade button{appearance:none;border:0;background:none;padding:.1em .2em;font-stretch:80%;font-size:var(--s-1);color:var(--quiet);cursor:pointer;text-decoration:underline;text-decoration-color:var(--hair);text-underline-offset:3px}
-.shade button:hover{color:var(--ink);text-decoration-color:var(--ink)}
+.shade{display:flex;justify-content:flex-end}
+.shade span.seg3{display:inline-flex;border:1px solid var(--hair);border-radius:var(--r-pill);overflow:hidden}
+.shade button{appearance:none;border:0;background:none;min-height:36px;padding:0 .95em;font-stretch:86%;font-size:var(--s-1);color:var(--ink);cursor:pointer}
+.shade button + button{border-left:1px solid var(--hair)}
+.shade button:hover{background:var(--well)}
+#dshades{align-items:center;row-gap:.5em}
 .err{color:var(--quiet);font-stretch:88%}
 .more{appearance:none;border:0;background:none;padding:0;margin-top:1.3em;cursor:pointer;color:var(--ink);font-stretch:90%;
   text-decoration:underline;text-decoration-color:var(--hair);text-underline-offset:4px}
@@ -85,10 +88,8 @@ ol.log.big time{font-size:var(--s0)}
 .jump button{appearance:none;border:0;background:none;padding:.15em 0;cursor:pointer;color:var(--quiet);font-stretch:88%;font-size:var(--s-1)}
 .jump button:hover{color:var(--ink)}
 .jump button[aria-pressed="true"]{color:var(--ink);font-weight:560}
+.jump .div{width:1px;align-self:stretch;background:var(--hair)}
 .floor{scroll-margin-top:110px}
-.pin{appearance:none;border:0;background:none;cursor:pointer;padding:0 .2em;margin-left:.4em;font-size:var(--s-1);font-stretch:84%;color:var(--quiet);
-  text-decoration:underline;text-decoration-color:var(--hair);text-underline-offset:3px}
-.pin[aria-pressed="true"]{color:var(--ink);text-decoration-color:var(--ink)}
 .pinned{margin-bottom:2.2em}
 .pinned .dev:first-child{border-top:0}
 .pinned .empty{color:var(--quiet);font-stretch:88%;margin:0}
@@ -107,6 +108,44 @@ ol.log.big time{font-size:var(--s0)}
 .dev .tg{grid-area:t}
 .dev input{grid-area:s}
 .dev.unav .n,.dev.unav .tg{opacity:.45}
+.act-field{margin-top:0}
+@media (min-width:1080px){.act-field{grid-template-columns:1fr 2fr}}
+ol.log.big{font-size:var(--s0)}
+
+/* Counts are pills: a number in a soft capsule */
+.count{display:inline-block;min-width:1.7em;padding:.05em .5em .1em;border-radius:var(--r-pill);background:var(--well);color:var(--ink);
+  font-size:var(--s-1);font-weight:500;font-stretch:88%;text-align:center;line-height:1.35;vertical-align:.12em;margin-left:.45em}
+[aria-pressed="true"] > .count{background:var(--ink);color:var(--ground)}
+.floor > h2 .count{font-size:var(--s-1);vertical-align:.5em;letter-spacing:0}
+
+/* Pin: an icon button on every device */
+.dev{grid-template-columns:1fr auto auto;grid-template-areas:"n p t" "s s s"}
+.pinb{grid-area:p;appearance:none;border:0;background:none;cursor:pointer;width:36px;height:32px;display:grid;place-items:center;color:var(--hair);border-radius:var(--r-s)}
+.pinb:hover{color:var(--quiet)}
+.pinb svg{width:17px;height:17px}
+.pinb[aria-pressed="true"]{color:var(--ink)}
+.pinb[aria-pressed="true"] path{fill:currentColor}
+
+/* Shortcuts that need a second tap */
+.act.guard{border-color:color-mix(in srgb,var(--alert) 55%,var(--hair))}
+.act.guard strong{color:var(--alert)}
+.act.armed{background:var(--alert);border-color:var(--alert);color:var(--ground)}
+.act.armed strong,.act.armed em{color:var(--ground)}
+
+/* Daylight meters: lux on a log scale, with the off and back-on thresholds */
+.zone{margin-bottom:1.6em}
+.zone .zh{display:flex;justify-content:space-between;gap:1em;align-items:baseline}
+.zone .zh b{font-weight:500;font-stretch:96%}
+.zone .zh span{font-stretch:86%;color:var(--quiet);font-size:var(--s-1)}
+.meter{position:relative;height:16px;margin:.55em 0 1.5em;background:linear-gradient(var(--hair),var(--hair)) 0 50%/100% 2px no-repeat}
+.meter i{position:absolute;display:block;font-style:normal}
+.meter .band{top:3px;height:10px;background:var(--well);box-shadow:inset 0 0 0 1px var(--hair)}
+.meter .tk{top:0;width:1px;height:16px;background:var(--quiet)}
+.meter .tk span{position:absolute;top:19px;left:50%;transform:translateX(-50%);font-size:11.5px;font-stretch:80%;color:var(--quiet);white-space:nowrap}
+.meter .dot{top:2px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--ground);box-shadow:inset 0 0 0 1.5px var(--ink)}
+.meter .dot.lit{background:var(--light)}
+.zone p{margin:0;font-size:var(--s-1);font-stretch:88%;color:var(--quiet);max-width:44ch}
+.zone p b{color:var(--ink);font-weight:500}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -128,17 +167,14 @@ ol.log.big time{font-size:var(--s0)}
   </figure>
   <section class="field">
     <div>
-      <div class="pinned" id="pinned-wrap"><h2>Pinned</h2><div id="pinned"></div></div>
       <h2>Shortcuts</h2>
       <div class="acts" id="acts"></div>
+      <div class="pinned sub" id="pinned-wrap"><h2>Pinned</h2><div id="pinned"></div></div>
+    </div>
+    <div>
+      <h2>Daylight</h2>
+      <div id="daylight"></div>
       <div class="sub"><h2>Light right now</h2><dl id="status"></dl></div>
-    </div>
-    <div>
-      <h2>Motion</h2><dl id="motion"></dl>
-    </div>
-    <div>
-      <h2>Today in the house</h2><ol class="log" id="log"></ol>
-      <button class="more" data-go="activity">All activity</button>
     </div>
   </section>
 </section>
@@ -148,15 +184,17 @@ ol.log.big time{font-size:var(--s0)}
   <div id="floors"><p class="err">Finding the rooms.</p></div>
 </section>
 <section id="v-activity" role="tabpanel" aria-label="Activity" hidden>
-  <h1 class="page-h">The last day in the house</h1>
-  <ol class="log big" id="alog"></ol>
+  <div class="field act-field">
+    <div><h2>Motion</h2><dl id="motion"></dl></div>
+    <div><h2>The last day in the house</h2><ol class="log big" id="alog"></ol></div>
+  </div>
 </section>
 </main>
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
 const API = new URLSearchParams(location.search).has("mock") ? "mock_state.json" : "api/state";
-let S = null, scrub = null;
+let S = null, scrub = null, armedFor = null, armTimer = null;
 
 /* Colour temperature to sRGB (Tanner Helland's fit), for drawing the light as it looks. */
 function kRGB(k){
@@ -263,18 +301,19 @@ function render(){
     const tog = c.entity.startsWith("input_boolean."), on = c.state === "on";
     let note = tog ? (on ? "On" : "Off") : (c.last_triggered ? "Last run "+(Date.now()-new Date(c.last_triggered) < 864e5 ? t(c.last_triggered) : ago(c.last_triggered)) : "Not run yet");
     if (c.note) note = c.note;
-    return `<button class="act" data-e="${esc(c.entity)}" ${tog?`aria-pressed="${on}"`:""}><strong>${esc(c.name)}</strong><em>${esc(note)}</em></button>`;
+    const armed = armedFor === c.entity;
+    return `<button class="act${c.confirm?" guard":""}${armed?" armed":""}" data-e="${esc(c.entity)}" ${c.confirm?"data-confirm":""} ${tog?`aria-pressed="${on}"`:""}><strong>${esc(c.name)}</strong><em>${esc(armed?"Tap again to turn everything on":note)}</em></button>`;
   }).join("");
 
   if (d){
     const L = Object.values(d.lights), on = L.filter(x=>x.state==="on");
-    const held = L.filter(x=>x.held), dz = d.zones.map(z=>[z.name, z.lux, z.bright]);
+    const held = L.filter(x=>x.held);
     const row = (a,b,live) => `<dt>${a}</dt><dd${live?' class="live"':""}>${b}</dd>`;
     $("status").innerHTML =
       row("Lights on", `${on.length} of ${L.length}`, on.length>0) +
       row("Following the schedule", `${on.filter(x=>!x.held).length}`) +
-      row("Set by hand", held.length ? held.map(x=>esc(x.name)).join(", ") : "None") +
-      dz.map(([n,lux,br])=>row(`Daylight, ${esc(n)}`, `${lux==null?"no reading":Math.round(lux).toLocaleString()+" lx"}, ${br?"enough":"not enough"}`, br)).join("");
+      row("Set by hand", held.length ? held.map(x=>esc(x.name)).join(", ") : "None");
+    $("daylight").innerHTML = d.zones.map(z=>zoneMeter(z, L.filter(x=>x.zone===z.name))).join("");
   } else $("status").innerHTML = `<dt class="err">Circadian isn't answering.</dt><dd></dd>`;
 
   $("motion").innerHTML = s.motion.map(m=>{
@@ -283,14 +322,36 @@ function render(){
     return `<dt>${esc(m.name.replace(/ (motion|presence)$/i,""))}</dt><dd class="${cls}">${txt}</dd>`;
   }).join("") || `<dt class="err">No motion sensors chosen.</dt><dd></dd>`;
 
-  $("log").innerHTML = logRows(s.activity.slice(0,8));
   $("alog").innerHTML = logRows(s.activity);
+}
+
+/* One daylight zone: where the sensor reads against the two thresholds, and what it's doing. */
+const ZONE = {kitchen:"Kitchen and dining", outdoor:"Outside, south corner"};
+function zoneMeter(z, lights){
+  const lux = z.lux, lo = Math.max(1, z.on_below/20), hi = z.off_above*12;
+  const W = 1000, x = v => Math.max(0, Math.min(W, Math.log(Math.max(v,lo)/lo)/Math.log(hi/lo)*W));
+  const off = lights.filter(l=>l.daylight_off), fmt = v => Math.round(v).toLocaleString();
+  let say;
+  if (lux == null) say = `No reading from the sensor, so it counts as dark: lights follow the schedule.`;
+  else if (z.bright) say = off.length
+    ? `<b>Bright enough.</b> Holding ${off.length} light${off.length>1?"s":""} off: ${off.map(l=>esc(l.name)).join(", ")}. They come back below ${fmt(z.on_below)} lx.`
+    : `<b>Bright enough.</b> Nothing it manages is on, so nothing to switch off.`;
+  else if (lux >= z.on_below) say = `<b>In between.</b> Lights stay as they are until it's above ${fmt(z.off_above)} lx for a while.`;
+  else say = `<b>Not bright enough</b> to switch anything off. That starts above ${fmt(z.off_above)} lx.`;
+  const pc = v => (x(v)/W*100).toFixed(2)+"%";
+  return `<div class="zone"><div class="zh"><b>${esc(ZONE[z.name]||z.name)}</b><span>${lux==null?"no reading":fmt(lux)+" lx"}</span></div>
+    <div class="meter" role="img" aria-label="${lux==null?"No reading":fmt(lux)+" lux"}; lights go off above ${fmt(z.off_above)}, back on below ${fmt(z.on_below)}">
+      <i class="band" style="left:${pc(z.on_below)};width:calc(${pc(z.off_above)} - ${pc(z.on_below)})"></i>
+      <i class="tk" style="left:${pc(z.on_below)}"><span>${fmt(z.on_below)}</span></i><i class="tk" style="left:${pc(z.off_above)}"><span>${fmt(z.off_above)}</span></i>
+      ${lux==null?"":`<i class="dot${z.bright?" lit":""}" style="left:${pc(lux)}"></i>`}
+    </div>
+    <p>${say}</p></div>`;
 }
 
 function shadeRows(list){
   return list.map(c=>{
     const st = c.state==="unknown" || c.state==null ? "" : (c.position!=null && c.state==="open" && c.position<100 ? `${c.position}% open` : c.state);
-    return `<dt>${esc(c.name)} <span style="color:var(--quiet);font-stretch:84%">${esc(st)}</span></dt><dd class="shade"><button data-c="${esc(c.entity)}" data-op="open">Open</button><button data-c="${esc(c.entity)}" data-op="stop">Stop</button><button data-c="${esc(c.entity)}" data-op="close">Close</button></dd>`;
+    return `<dt>${esc(c.name)} <span style="color:var(--quiet);font-stretch:84%">${esc(st)}</span></dt><dd class="shade"><span class="seg3"><button data-c="${esc(c.entity)}" data-op="open">Open</button><button data-c="${esc(c.entity)}" data-op="stop">Stop</button><button data-c="${esc(c.entity)}" data-op="close">Close</button></span></dd>`;
   }).join("");
 }
 
@@ -317,12 +378,13 @@ async function loadDevices(){
 let pins = [];
 try{ pins = JSON.parse(localStorage.getItem("house-pins")||"[]"); }catch(e){}
 const savePins = () => { try{ localStorage.setItem("house-pins", JSON.stringify(pins)); }catch(e){} };
-let onlyOn = false, editPins = false;
+let onlyOn = false;
+const PIN = `<svg viewBox="0 0 17 17" aria-hidden="true"><path d="M10.6 1.6 15.4 6.4 13.2 7.2 10.4 10 10.8 13.4 9.6 14.6 6.8 11.8 2.6 16 1 16 1 14.4 5.2 10.2 2.4 7.4 3.6 6.2 7 6.6 9.8 3.8Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
 
 function devRow(i, label){
   const on = i.state==="on", un = i.state==="unavailable", v = on ? (i.brightness ?? 100) : 0, pinned = pins.includes(i.entity);
-  return `<div class="dev${un?" unav":""}"><span class="n">${esc(label)}${on&&i.dimmable&&i.brightness!=null?`<small>${i.brightness}%</small>`:""}${un?"<small>Offline</small>":""}`+
-    (editPins ? `<button class="pin" data-pin="${esc(i.entity)}" aria-pressed="${pinned}">${pinned?"Pinned":"Pin"}</button>` : "")+`</span>`+
+  return `<div class="dev${un?" unav":""}"><span class="n">${esc(label)}${on&&i.dimmable&&i.brightness!=null?`<small>${i.brightness}%</small>`:""}${un?"<small>Offline</small>":""}</span>`+
+    `<button class="pinb" data-pin="${esc(i.entity)}" aria-pressed="${pinned}" aria-label="${pinned?"Unpin":"Pin"} ${esc(label)}" title="${pinned?"Unpin":"Pin to Now"}">${PIN}</button>`+
     `<button class="pill tg" data-d="${esc(i.entity)}" aria-pressed="${on}" aria-label="${esc(label)} ${on?"on":"off"}" ${un?"disabled":""}>${on?"On":"Off"}</button>`+
     (i.dimmable && on ? `<input type="range" min="1" max="100" value="${v||1}" style="--v:${v}%" data-l="${esc(i.entity)}" aria-label="${esc(label)} brightness">` : "")+`</div>`;
 }
@@ -335,7 +397,7 @@ function controls(){
 }
 function renderPinned(){
   const wrap = $("pinned-wrap");
-  const empty = `<p class="empty">Keep the lights you reach for here. <button data-go="devices" data-edit>Choose them in Devices</button></p>`;
+  const empty = `<p class="empty">Pin the lights you reach for most. <button data-go="devices">Go to Devices</button></p>`;
   if (!D){ $("pinned").innerHTML = pins.length ? "" : empty; return; }
   const by = Object.fromEntries(controls().map(c=>[c.i.entity, c]));
   const list = pins.map(e=>by[e]).filter(Boolean);
@@ -347,8 +409,7 @@ function renderDevices(){
   $("dshades").innerHTML = shadeRows(D.shades);
   const floorsOn = D.floors.map(f=>f.areas.flatMap(a=>a.items).filter(i=>i.state==="on").length);
   $("jump").innerHTML =
-    `<button data-filter aria-pressed="${onlyOn}">On now, ${floorsOn.reduce((a,b)=>a+b,0)}</button>`+
-    `<button data-editpins aria-pressed="${editPins}">${editPins?"Done pinning":"Pin"}</button>`+
+    `<button data-filter aria-pressed="${onlyOn}">On now<span class="count">${floorsOn.reduce((a,b)=>a+b,0)}</span></button><span class="div"></span>`+
     D.floors.map(f=>`<button data-floor="${esc(f.id)}">${esc(FLOOR[f.id]||f.name)}</button>`).join("");
   $("dshades").parentElement.hidden = onlyOn;
   $("floors").innerHTML = D.floors.map((f,fi)=>{
@@ -360,7 +421,7 @@ function renderDevices(){
     const multi = areas.filter(a=>a.items.length>1), single = areas.filter(a=>a.items.length===1);
     const blocks = multi.map(a=>`<div class="room"><h3>${esc(a.name)}</h3>${a.shown.map(i=>devRow(i,i.name)).join("")}</div>`);
     if (single.length) blocks.push(`<div class="room">${multi.length?"<h3>Elsewhere</h3>":""}${single.map(a=>devRow(a.items[0], a.name)).join("")}</div>`);
-    return `<section class="floor" id="floor-${esc(f.id)}"><h2>${esc(FLOOR[f.id]||f.name)} <span>${on} of ${items.length} on</span></h2><div class="rooms">${blocks.join("")}</div></section>`;
+    return `<section class="floor" id="floor-${esc(f.id)}"><h2>${esc(FLOOR[f.id]||f.name)}${on?`<span class="count" title="${on} of ${items.length} on">${on} on</span>`:""}</h2><div class="rooms">${blocks.join("")}</div></section>`;
   }).join("") || `<p class="err">Everything's off.</p>`;
   renderPinned();
 }
@@ -411,17 +472,20 @@ async function act(body, el, after){
 function refresh(){ load(); if (view==="devices" || pins.length) loadDevices(); }
 document.addEventListener("click",e=>{
   const tab = e.target.closest(".app-tabs button, [data-go]");
-  if (tab){ if (tab.hasAttribute("data-edit")) editPins = true; show(tab.dataset.v || tab.dataset.go); return; }
+  if (tab){ show(tab.dataset.v || tab.dataset.go); return; }
   const pin = e.target.closest("[data-pin]");
   if (pin){ const id = pin.dataset.pin; pins = pins.includes(id) ? pins.filter(x=>x!==id) : [...pins, id]; savePins(); renderDevices(); return; }
   if (e.target.closest("[data-filter]")){ onlyOn = !onlyOn; renderDevices(); return; }
-  if (e.target.closest("[data-editpins]")){ editPins = !editPins; renderDevices(); return; }
   const fl = e.target.closest("[data-floor]");
   if (fl){ if (onlyOn){ onlyOn=false; renderDevices(); } $("floor-"+fl.dataset.floor)?.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"}); return; }
   const d = e.target.closest(".tg");
   if (d){ d.setAttribute("aria-pressed", d.getAttribute("aria-pressed")!=="true"); act({entity:d.dataset.d, op: d.getAttribute("aria-pressed")==="true"?"on":"off"}, d, loadDevices); return; }
   const b = e.target.closest(".act");
-  if (b){ const tog = b.hasAttribute("aria-pressed"); act({entity:b.dataset.e, op: tog ? (b.getAttribute("aria-pressed")==="true"?"off":"on") : "run"}, b); return; }
+  if (b && b.hasAttribute("data-confirm") && armedFor !== b.dataset.e){
+    armedFor = b.dataset.e; render(); clearTimeout(armTimer);
+    armTimer = setTimeout(()=>{ armedFor = null; render(); }, 4000); return;
+  }
+  if (b){ armedFor = null; const tog = b.hasAttribute("aria-pressed"); act({entity:b.dataset.e, op: tog ? (b.getAttribute("aria-pressed")==="true"?"off":"on") : "run"}, b); return; }
   const c = e.target.closest("[data-c]");
   if (c) act({entity:c.dataset.c, op:c.dataset.op}, c);
 });
