@@ -1939,6 +1939,18 @@ select,input[type=time]{min-height:44px}
   .head{align-items:stretch}
   .head .tabs{flex-basis:100%}
 }
+
+/* Editor: never wider than the window (Safari sizes canvases by their pixel width otherwise) */
+.editor{grid-template-columns:minmax(0,1fr) min(380px,42vw)}
+.ed-stage,.ed-panel,.ed-scroll,.ed-scroll>*{min-width:0}
+.ed-panel{overflow:hidden}
+.ed-scroll{grid-template-columns:minmax(0,1fr);overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.styles{grid-template-columns:repeat(4,minmax(0,1fr))}
+.style{min-width:0}
+.style canvas,.ed-wrap canvas{max-width:100%}
+.seg{min-width:0}
+.seg button{min-width:0;min-height:40px}
+@media (max-width:860px){.editor{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
