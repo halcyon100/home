@@ -538,3 +538,17 @@ async def test_boost_eases_out_after_sunset_and_switches_off(aiohttp_server):
     await set_boost(fake, False)
     assert not [x for x in fake.calls if x[1] == "turn_off" and x[0] == "light"]   # eased out: nothing snaps
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_day_report_shape(aiohttp_server):
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(12, 0), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, boost_options(), clock)
+    await set_boost(fake, True)
+    r = c.day_report()
+    import json as _j
+    _j.dumps(r)
+    assert len(r["lights"]["light.nook"]["curve"]) == 145
+    assert r["boost"]["on"] and r["boost"]["mult_now"] == 1.5
+    assert r["lights"]["light.nook"]["target"][0] == 86.2 or r["lights"]["light.nook"]["target"][0] > 80
+    reader.cancel(); await ha.close()
