@@ -56,6 +56,25 @@
     try { return inHA() ? window.top.document.querySelector("home-assistant").hass : null; } catch (e) { return null; }
   }
   let convId = null;
+  // The Home Assistant phone app has its own Assist: it holds the microphone itself (so it works over
+  // plain http at home), speaks the answer, and shows the text. Use it when we're inside the app.
+  function nativeAssist() {
+    try { const ext = hass() && hass().auth.external; return ext && ext.config && ext.config.hasAssist ? ext : null; } catch (e) { return null; }
+  }
+  const canListen = () => { try { return window.top.isSecureContext && !!window.top.navigator.mediaDevices; } catch (e) { return false; } };
+  // iOS plays sound only from a tap; unlock one audio element during the tap and reuse it for the reply.
+  let voice = null;
+  const SILENCE = (() => {   // 0.1 s of silent 8 kHz mono WAV
+    const n = 800, b = new DataView(new ArrayBuffer(44 + n)), w = (o, t) => [...t].forEach((c, i) => b.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); b.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+    b.setUint32(24, 8000, true); b.setUint32(28, 8000, true); b.setUint16(32, 1, true); b.setUint16(34, 8, true); w(36, "data"); b.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) b.setUint8(44 + i, 128);
+    let bin = ""; new Uint8Array(b.buffer).forEach(x => bin += String.fromCharCode(x)); return "data:audio/wav;base64," + btoa(bin);
+  })();
+  function unlockVoice() {
+    try { voice = voice || new Audio(); voice.src = SILENCE; voice.play().catch(() => {}); } catch (e) {}
+  }
+  function speak(url) { try { const a = voice || new Audio(); a.src = url; a.play().catch(() => {}); } catch (e) {} }
 
   function runPipeline(msg, onEvent) {
     const h = hass();
@@ -159,6 +178,7 @@
   input:focus{outline:none;border-color:var(--hair,#ccc)}
   .round{appearance:none;flex:none;width:46px;height:46px;border-radius:50%;border:1px solid var(--hair,#ccc);background:none;color:inherit;cursor:pointer;display:grid;place-items:center}
   .round svg{width:18px;height:18px}
+  .round[hidden]{display:none}
   .round.send{background:var(--ink,#111);color:var(--ground,#fff);border-color:var(--ink,#111)}
   .round.live{background:var(--light,#ffd9a8);border-color:var(--light,#ffd9a8);color:var(--on-light,#111);animation:pulse 1.2s ease-in-out infinite}
   @keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--light,#ffd9a8) 30%,transparent)}}
@@ -174,7 +194,7 @@
       const root = this.attachShadow({mode: "open"});
       root.innerHTML = `<style>${css}</style>
         <div class="bar"><div class="tabs"><slot name="tabs"></slot></div>
-          <button class="ask" aria-haspopup="dialog" ${hass() ? "" : "hidden"}>${MIC}Ask</button>
+          <button class="ask" aria-label="Talk to the house" ${hass() ? "" : "hidden"}>${MIC}Talk</button>
           <button class="apps" aria-haspopup="dialog">
             <svg viewBox="0 0 15 15" aria-hidden="true"><g fill="currentColor">${[2,7.5,13].flatMap(x=>[2,7.5,13].map(y=>`<circle cx="${x}" cy="${y}" r="1.35"/>`)).join("")}</g></svg>
             All apps</button></div>
@@ -183,7 +203,7 @@
         </ul></div></dialog>
         <dialog class="askd" aria-label="Ask the house"><div class="sheet asksheet" tabindex="-1">
           <h2>Ask the house</h2>
-          <div class="log" aria-live="polite"><p class="hint">Type, use the keyboard's dictation, or tap the microphone and speak.</p></div>
+          <div class="log" aria-live="polite"><p class="hint">Ask anything, or tell the house what to do.</p></div>
           <form><input name="q" autocomplete="off" enterkeyhint="send" placeholder="Is Costco open?">
             <button type="button" class="round mic" aria-label="Speak">${MIC}</button>
             <button type="submit" class="round send" aria-label="Send">${SEND}</button></form>
@@ -203,8 +223,8 @@
           input = form.q, mic = root.querySelector(".mic");
     const esc = s => String(s).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
     const say = (cls, text) => { const p = document.createElement("p"); p.className = cls; p.innerHTML = esc(text); log.append(p); log.scrollTop = log.scrollHeight; return p; };
-    root.querySelector(".ask").addEventListener("click", () => { d.showModal(); input.focus(); });
     d.addEventListener("click", e => { if (e.target === d) d.close(); });
+    if (!canListen()) mic.hidden = true;   // no microphone over plain http; the keyboard's dictation still works
     let busy = false;
     form.addEventListener("submit", async e => {
       e.preventDefault();
@@ -219,9 +239,10 @@
       busy = false; input.focus();
     });
     const ui = {stop: null, stopped: () => { mic.classList.remove("live"); mic.setAttribute("aria-label", "Speak"); }};
-    mic.addEventListener("click", async () => {
+    const talk = async () => {
       if (mic.classList.contains("live")) { ui.stop && ui.stop(); return; }
       if (busy) return;
+      unlockVoice();
       busy = true; log.querySelector(".hint")?.remove();
       mic.classList.add("live"); mic.setAttribute("aria-label", "Stop listening");
       const you = say("you", "Listening…"); let wait = null;
@@ -229,10 +250,19 @@
         await listen(ev => {
           if (ev.type === "stt-end") { you.textContent = ev.data.stt_output.text || "(didn't catch that)"; wait = say("house", "…"); }
           if (ev.type === "intent-end" && wait) wait.textContent = speechOf(ev) || "Done.";
-          if (ev.type === "tts-end" && ev.data.tts_output?.url) { try { new Audio(ev.data.tts_output.url).play(); } catch (e) {} }
+          if (ev.type === "tts-end" && ev.data.tts_output?.url) speak(ev.data.tts_output.url);
         }, ui);
       } catch (err) { (wait || you).className = "err"; (wait || you).textContent = err.message === "NOSECURE" ? "The microphone needs a secure (https) connection, and this one is plain http. For now, tap the text box and use the keyboard's microphone." : err.name === "NotAllowedError" ? "Microphone access is off for Home Assistant." : err.message; }
       busy = false;
+    };
+    mic.addEventListener("click", talk);
+    // One tap to talk: the phone app's own Assist when we're inside it; otherwise listen right away
+    // where the browser allows the microphone, and fall back to typing where it doesn't.
+    root.querySelector(".ask").addEventListener("click", () => {
+      const ext = nativeAssist();
+      if (ext) { ext.fireMessage({type: "assist/show", payload: {pipeline_id: "preferred", start_listening: true}}); return; }
+      d.showModal();
+      if (canListen()) talk(); else input.focus();
     });
   };
   if (!customElements.get("app-bar")) customElements.define("app-bar", AppBar);
