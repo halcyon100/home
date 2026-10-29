@@ -1852,93 +1852,107 @@ details.panel:not([open])>summary{margin-bottom:0}
 @media (max-height:520px){ .tv{max-width:150px} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 /* shared app bar: layout from shared/tokens.css */
+
+/* ---------- v1.5 layout: three views under the shared bar, House type and spacing ---------- */
+.fview{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(14px,2vw,26px) var(--gut) 64px}
+.wallview{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:clamp(28px,5vw,64px);align-items:start}
+.wallview .wall{padding:0}
+.tv{max-width:300px}
+.wall-side{display:grid;gap:clamp(26px,3.5vw,40px);max-width:34rem}
+.status{margin:0}
+.status h1{font:300 var(--s5)/1.02 var(--face);font-stretch:96%;letter-spacing:-.022em}
+.status p{font-size:var(--s1);font-stretch:88%;margin-top:.35em}
+.status .act:empty{display:none}
+.panel{display:grid;gap:16px}
+.row-label{font-size:var(--s0);font-weight:600;font-stretch:88%;color:var(--ink);margin:0}
+.play-now{font-size:var(--s0);color:var(--ink);margin:0}
+.play-now small{font-size:var(--s-1);color:var(--quiet);margin-top:.2em}
+.play-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:var(--s0)}
+.f{display:grid;gap:6px}
+.f span{font-size:var(--s-1);font-stretch:86%;color:var(--quiet)}
+select,input[type=time]{min-height:44px}
+.check{display:flex;align-items:center;gap:12px;min-height:44px;font-size:var(--s0);color:var(--ink);cursor:pointer}
+.check input{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:24px;margin:0;border-radius:12px;background:var(--well);
+  box-shadow:inset 0 0 0 1px var(--hair);position:relative;cursor:pointer;transition:background .2s}
+.check input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--quiet);transition:transform .2s,background .2s}
+.check input:checked{background:var(--light);box-shadow:none}
+.check input:checked::after{transform:translateX(18px);background:var(--on-light)}
+.play-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.btn{min-height:44px}
+.btn.small{min-height:38px}
+.switch{min-height:44px;align-items:center}
+.switch .knob{margin-top:0}
+.settings{display:grid;gap:clamp(36px,5vw,56px);max-width:calc(36rem + 2*var(--gut));margin-left:max(0px,calc((100% - var(--maxw))/2 - var(--gut)));margin-right:auto}
+.settings .wake{padding-left:56px}
+.wake-times input{min-height:44px}
+.slot{padding:14px}
+.slot-del{width:40px;height:40px}
+.head{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.head .tabs{flex:1;min-width:0}
+.head-acts{display:flex;gap:10px;flex-wrap:wrap}
+.tabs button{min-height:44px;font-size:var(--s1)}
+.tabs .n{display:inline-block;min-width:1.7em;padding:.05em .5em .1em;border-radius:var(--r-pill);background:var(--well);color:var(--ink);
+  font-size:var(--s-1);text-align:center;line-height:1.35;vertical-align:.2em}
+.tab-new{min-height:44px;font-size:var(--s0)}
+.col-tools{margin:-6px 0 22px;flex-wrap:wrap}
+@media (max-width:760px){
+  .wallview{grid-template-columns:1fr;gap:24px}
+  .wallview .wall{justify-content:center}
+  .tv{max-width:min(52vw,210px)}
+  .status{text-align:left}
+  .settings .wake{padding-left:0}
+  .head{align-items:stretch}
+  .head .tabs{flex-basis:100%}
+}
 </style>
 </head>
 <body>
-<app-bar app="frame"><nav slot="tabs" class="app-tabs"><span aria-selected="true">Frame</span></nav></app-bar>
-<div class="page">
-<div class="layout">
-  <aside class="side">
-    <div class="wall" id="wall">
-      <div class="lamp" aria-hidden="true"></div>
-      <div class="tv"><div class="screen" id="screen"><div class="msg">Connecting…</div></div></div>
-    </div>
+<app-bar app="frame"><nav slot="tabs" class="app-tabs" role="tablist" aria-label="Frame">
+  <button role="tab" data-fv="wall" aria-selected="true">On the wall</button>
+  <button role="tab" data-fv="photos" aria-selected="false">Photos</button>
+  <button role="tab" data-fv="settings" aria-selected="false">Settings</button>
+</nav></app-bar>
+
+<!-- On the wall: what's showing, and what plays next -->
+<section class="fview wallview" id="fv-wall" role="tabpanel" aria-label="On the wall">
+  <div class="wall" id="wall">
+    <div class="lamp" aria-hidden="true"></div>
+    <div class="tv"><div class="screen" id="screen"><div class="msg">Connecting…</div></div></div>
+  </div>
+  <div class="wall-side">
     <div class="status" aria-live="polite">
       <h1 id="s-title">Connecting</h1>
       <p id="s-sub">&nbsp;</p>
       <div class="act" id="s-act"></div>
     </div>
-
-    <div class="controls">
-      <details class="play panel" id="play-box" open>
-        <summary class="row-label" id="play-l">Play</summary>
-        <p class="play-now" id="play-now">Checking the Frame…</p>
-        <div class="play-row">
-          <label for="play-what">What</label><select id="play-what"></select>
-          <label for="play-every">Every</label><select id="play-every"></select>
-        </div>
-        <label class="check"><input type="checkbox" id="play-shuffle" checked> Shuffle</label>
-        <div class="play-actions">
-          <button class="btn brass small" id="play-go">Play</button>
-          <button class="btn ghost small" id="play-stop">Stop</button>
-        </div>
-      </details>
-      <details class="display panel" id="disp-box" open>
-        <summary class="row-label" id="disp-l">Display and schedule</summary>
-        <button class="switch" role="switch" aria-checked="false" id="d-sensor" disabled>
-          <span class="knob" aria-hidden="true"></span>
-          <span><strong>Adjust to room light</strong><small id="d-sensor-sub">Uses the Frame's light sensor.</small></span>
-        </button>
-        <div class="field" id="d-bright-field">
-          <label for="d-bright">Brightness <output id="d-bright-out">…</output></label>
-          <input type="range" id="d-bright" min="0" max="10" step="1" disabled>
-        </div>
-        <div class="field">
-          <label for="d-warm">Warmth <output id="d-warm-out">…</output></label>
-          <input type="range" id="d-warm" min="-5" max="5" step="1" disabled>
-        </div>
-        <button class="switch" role="switch" aria-checked="false" id="n-on">
-          <span class="knob" aria-hidden="true"></span>
-          <span><strong>Brightness schedule</strong><small id="n-sub">Times can follow sunrise and sunset in Colgate.</small></span>
-        </button>
-        <div class="night" id="n-box" hidden>
-          <ol class="slots" id="slots" aria-label="Schedule times"></ol>
-          <button class="btn ghost small" id="slot-add" type="button">+ Add a time</button>
-        </div>
-      </details>
-      <button class="switch" role="switch" aria-checked="false" id="watch">
-        <span class="knob" aria-hidden="true"></span>
-        <span><strong>Keep it in Art Mode</strong><small id="watch-sub">Checks every minute.</small></span>
-      </button>
-      <div class="wake" id="wake-box">
-        <label class="check"><input type="checkbox" id="wake-on"> Turn it back on if it switches off between</label>
-        <div class="wake-times">
-          <input type="time" id="wake-from" aria-label="From"> <span>and</span>
-          <input type="time" id="wake-to" aria-label="To">
-        </div>
-        <div class="wake-foot">
-          <small id="wake-sub"></small>
-          <button class="btn ghost small" id="wake-now" type="button">Wake now</button>
-        </div>
+    <section class="play panel" id="play-box">
+      <h2 class="row-label" id="play-l">Play</h2>
+      <p class="play-now" id="play-now">Checking the Frame…</p>
+      <div class="play-row">
+        <label class="f"><span>What</span><select id="play-what"></select></label>
+        <label class="f"><span>Every</span><select id="play-every"></select></label>
       </div>
-      <details class="panel tools" id="tools-box">
-        <summary class="row-label">Tools</summary>
-        <p class="tool-note">Bring over sharp, uncropped previews from the laptop version: choose its
-          “Frame cache for Home Assistant” folder.</p>
-        <button class="btn ghost small" id="import-btn" type="button">Import previews…</button>
-        <input type="file" id="import-file" webkitdirectory multiple class="sr" tabindex="-1">
-      </details>
-    </div>
-  </aside>
+      <label class="check"><input type="checkbox" id="play-shuffle" checked> Shuffle</label>
+      <div class="play-actions">
+        <button class="btn" id="play-go">Play</button>
+        <button class="btn ghost" id="play-stop">Stop</button>
+      </div>
+    </section>
+  </div>
+</section>
 
+<!-- Photos: everything on the Frame, by collection -->
+<section class="fview" id="fv-photos" role="tabpanel" aria-label="Photos" hidden>
   <main>
     <div class="head">
       <div class="tabs" role="tablist" aria-label="Pictures"></div>
-      <button class="btn ghost" id="select-btn">Select</button>
-      <button class="btn ghost" id="addto-btn" hidden>Add to collection</button>
-      <button class="btn ghost" id="takeout-btn" hidden>Remove from collection</button>
-      <button class="btn ghost" id="reframe-btn" hidden>Reframe</button>
-      <button class="btn danger" id="delete-btn" hidden>Delete</button>
+      <div class="head-acts">
+        <button class="btn ghost" id="select-btn">Select</button>
+        <button class="btn ghost" id="addto-btn" hidden>Add to collection</button>
+        <button class="btn ghost" id="takeout-btn" hidden>Remove from collection</button>
+        <button class="btn ghost" id="reframe-btn" hidden>Reframe</button>
+        <button class="btn danger" id="delete-btn" hidden>Delete</button>
+      </div>
       <input type="file" id="file" accept="image/*,.heic,.heif" multiple class="sr" tabindex="-1">
     </div>
     <button class="droppad" id="droppad" type="button">
@@ -1954,8 +1968,62 @@ details.panel:not([open])>summary{margin-bottom:0}
     <ul class="grid" id="grid" aria-label="Pictures on the Frame"></ul>
     <p class="empty" id="empty" hidden></p>
   </main>
-</div>
-</div>
+</section>
+
+<!-- Settings: how the screen looks, when, and keeping it on art -->
+<section class="fview settings" id="fv-settings" role="tabpanel" aria-label="Settings" hidden>
+  <section class="display panel" id="disp-box">
+    <h2 class="row-label" id="disp-l">Display</h2>
+    <button class="switch" role="switch" aria-checked="false" id="d-sensor" disabled>
+      <span class="knob" aria-hidden="true"></span>
+      <span><strong>Adjust to room light</strong><small id="d-sensor-sub">Uses the Frame's light sensor.</small></span>
+    </button>
+    <div class="field" id="d-bright-field">
+      <label for="d-bright">Brightness <output id="d-bright-out">…</output></label>
+      <input type="range" id="d-bright" min="0" max="10" step="1" disabled>
+    </div>
+    <div class="field">
+      <label for="d-warm">Warmth <output id="d-warm-out">…</output></label>
+      <input type="range" id="d-warm" min="-5" max="5" step="1" disabled>
+    </div>
+  </section>
+  <section class="panel">
+    <h2 class="row-label">Schedule</h2>
+    <button class="switch" role="switch" aria-checked="false" id="n-on">
+      <span class="knob" aria-hidden="true"></span>
+      <span><strong>Brightness schedule</strong><small id="n-sub">Times can follow sunrise and sunset in Colgate.</small></span>
+    </button>
+    <div class="night" id="n-box" hidden>
+      <ol class="slots" id="slots" aria-label="Schedule times"></ol>
+      <button class="btn ghost" id="slot-add" type="button">Add a time</button>
+    </div>
+  </section>
+  <section class="panel">
+    <h2 class="row-label">Art Mode</h2>
+    <button class="switch" role="switch" aria-checked="false" id="watch">
+      <span class="knob" aria-hidden="true"></span>
+      <span><strong>Keep it in Art Mode</strong><small id="watch-sub">Checks every minute.</small></span>
+    </button>
+    <div class="wake" id="wake-box">
+      <label class="check"><input type="checkbox" id="wake-on"> Turn it back on if it switches off between</label>
+      <div class="wake-times">
+        <input type="time" id="wake-from" aria-label="From"> <span>and</span>
+        <input type="time" id="wake-to" aria-label="To">
+      </div>
+      <div class="wake-foot">
+        <small id="wake-sub"></small>
+        <button class="btn ghost" id="wake-now" type="button">Wake now</button>
+      </div>
+    </div>
+  </section>
+  <section class="panel tools" id="tools-box">
+    <h2 class="row-label">Tools</h2>
+    <p class="tool-note">Bring over sharp, uncropped previews from the laptop version: choose its
+      “Frame cache for Home Assistant” folder.</p>
+    <div><button class="btn ghost" id="import-btn" type="button">Import previews</button></div>
+    <input type="file" id="import-file" webkitdirectory multiple class="sr" tabindex="-1">
+  </section>
+</section>
 
 <section class="editor" id="editor" aria-label="Prepare photos">
   <div class="ed-stage">
@@ -2050,6 +2118,17 @@ details.panel:not([open])>summary{margin-bottom:0}
 <div class="toast" id="toast" role="status"></div>
 
 <script>
+// Views: On the wall, Photos, Settings
+(function(){
+  const show = v => {
+    document.querySelectorAll("[data-fv]").forEach(b => b.setAttribute("aria-selected", b.dataset.fv === v));
+    document.querySelectorAll(".fview").forEach(x => x.hidden = x.id !== "fv-" + v);
+    try { sessionStorage.setItem("frame-view", v); } catch (e) {}
+  };
+  document.addEventListener("click", e => { const b = e.target.closest("[data-fv]"); if (b) { show(b.dataset.fv); window.scrollTo(0, 0); } });
+  window.frameShow = show;
+  try { const v = sessionStorage.getItem("frame-view"); if (v) show(v); } catch (e) {}
+})();
 // Inside Home Assistant the page lives under an ingress path; every request is relative to it.
 const B = location.pathname.replace(/\/(index\.html)?$/, "");
 const $ = s => document.querySelector(s);
