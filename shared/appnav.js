@@ -82,6 +82,7 @@
   // microphone permission), streamed until Home Assistant hears the speech end.
   async function listen(onEvent, ui) {
     const top = window.top, h = hass();
+    if (!top.isSecureContext || !top.navigator.mediaDevices) throw new Error("NOSECURE");
     const stream = await top.navigator.mediaDevices.getUserMedia({audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true}});
     const Ctx = top.AudioContext || top.webkitAudioContext, ctx = new Ctx();
     const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1);
@@ -230,7 +231,7 @@
           if (ev.type === "intent-end" && wait) wait.textContent = speechOf(ev) || "Done.";
           if (ev.type === "tts-end" && ev.data.tts_output?.url) { try { new Audio(ev.data.tts_output.url).play(); } catch (e) {} }
         }, ui);
-      } catch (err) { (wait || you).className = "err"; (wait || you).textContent = err.message.includes("Permission") || err.name === "NotAllowedError" ? "Microphone access is off for Home Assistant." : err.message; }
+      } catch (err) { (wait || you).className = "err"; (wait || you).textContent = err.message === "NOSECURE" ? "The microphone needs a secure (https) connection, and this one is plain http. For now, tap the text box and use the keyboard's microphone." : err.name === "NotAllowedError" ? "Microphone access is off for Home Assistant." : err.message; }
       busy = false;
     });
   };
