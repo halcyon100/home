@@ -231,7 +231,7 @@ function render(){
   $("motion").innerHTML = s.motion.map(m=>{
     const cls = m.state==="on" ? "live" : (m.state==="unavailable" ? "gone" : "");
     const txt = m.state==="on" ? "Now" : m.state==="unavailable" ? "Offline" : ago(m.changed);
-    return `<dt>${esc(m.name)}</dt><dd class="${cls}">${txt}</dd>`;
+    return `<dt>${esc(m.name.replace(/ (motion|presence)$/i,""))}</dt><dd class="${cls}">${txt}</dd>`;
   }).join("") || `<dt class="err">No motion sensors chosen.</dt><dd></dd>`;
 
   $("shades").innerHTML = s.shades.map(c=>{
