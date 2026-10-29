@@ -65,7 +65,7 @@ def _ha_option(key, default):
         return default
 
 
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.3.0"
 TV_IP = os.environ.get("FRAME_IP") or _ha_option("tv_ip", "192.168.0.60")
 PORT = int(os.environ.get("FRAME_PORT", "8800"))
 WATCHDOG_EVERY = 60  # seconds
@@ -665,6 +665,36 @@ def _safe_display(on: bool) -> None:
 
 
 # ---------------------------------------------------------------- watchdog
+LAST = {"power": None}
+
+
+def after_sunset(now=None) -> bool:
+    now = now or datetime.now()
+    return now >= sun_times(now.date())[1]
+
+
+def sleep_until_morning(why: str) -> None:
+    STATE.set("asleep", True)
+    STATE.set("asleep_until", next_wake_start().isoformat(timespec="minutes"))
+    log.info("Display: %s; leaving it off until %s", why, STATE.get("asleep_until"))
+
+
+def night_check(power: str) -> None:
+    """At the end of the wake hours, turn the Frame fully off once for the night.
+    If someone turns it back on later that night, it's left alone."""
+    w = wake_settings()
+    if not w["on"] or in_wake_hours() or power != "on" or STATE.get("asleep"):
+        return
+    night = next_wake_start().date().isoformat()
+    if STATE.get("night_off") == night:
+        return
+    STATE.set("night_off", night)
+    try:
+        set_display(False, "the end of the day (%s)" % w["to"])
+    except Exception as e:
+        log.info("Night: couldn't turn the Frame off (%s)", e)
+
+
 def watchdog_loop() -> None:
     while True:
         time.sleep(WATCHDOG_EVERY)
@@ -672,9 +702,22 @@ def watchdog_loop() -> None:
             continue
         STATE.last_check = datetime.now().isoformat(timespec="seconds")
         power = TVC.power()
+        was, LAST["power"] = LAST["power"], power
         if check_asleep():
             publish_state(power)
             STATE.last_result = "Switched off on purpose (TV is %s)" % power
+            continue
+        night_check(power)
+        if STATE.get("asleep"):
+            publish_state()
+            continue
+        if was == "on" and power != "on" and in_wake_hours() and after_sunset():
+            # The Frame switches itself off in a dark room (projector, lights down).
+            # In the evening that's what we want, so don't wake it again tonight.
+            sleep_until_morning("it turned itself off in the evening (dark room)")
+            log_escape("TV turned itself off in the evening; left off until morning")
+            publish_state(power)
+            STATE.last_result = "Off for the evening (TV is %s)" % power
             continue
         publish_state(power)
         if power != "on":
@@ -1050,8 +1093,15 @@ def player_loop() -> None:
                 continue
             last = p.get("last")
             if p.get("shuffle"):
-                choices = [i for i in pool if i != last] or pool
-                nxt = random.choice(choices)
+                # Shuffle the deck: every picture once before any repeats.
+                bag = [i for i in (p.get("bag") or []) if i in pool]
+                if not bag:
+                    bag = list(pool)
+                    random.shuffle(bag)
+                    if len(bag) > 1 and bag[0] == last:
+                        bag.append(bag.pop(0))
+                nxt = bag.pop(0)
+                p["bag"] = bag
             else:
                 nxt = pool[(pool.index(last) + 1) % len(pool)] if last in pool else pool[0]
 
