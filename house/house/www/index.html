@@ -500,6 +500,7 @@ fig.addEventListener("pointermove",scrubAt);
 fig.addEventListener("pointerdown",scrubAt);
 fig.addEventListener("pointerleave",()=>{ scrub=null; if (S) draw(); });
 fig.addEventListener("pointerup",ev=>{ if (ev.pointerType!=="mouse"){ setTimeout(()=>{scrub=null; if (S) draw();},1600); } });
+fig.addEventListener("pointercancel",()=>{ scrub=null; if (S) draw(); });   // a scroll that started on the graph
 
 load(); if (pins.length) loadDevices(); renderPinned(); setInterval(refresh,30000);
 try{ const v = sessionStorage.getItem("house-view"); if (v && v!=="now") show(v); }catch(e){}

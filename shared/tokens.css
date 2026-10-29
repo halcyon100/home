@@ -29,6 +29,7 @@ body{margin:0;font:400 var(--s0)/1.45 var(--face);font-stretch:100%;font-feature
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 [hidden]{display:none!important}
+.in-ha body{padding-top:0!important}
 
 /* Display: light, wide. Section heads: semibold, narrow. */
 .t-display{font-size:var(--s3);font-weight:300;font-stretch:104%;letter-spacing:-.02em;line-height:1.05}

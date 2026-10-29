@@ -28,6 +28,8 @@
         document.documentElement.dataset.sky = (now >= rise && now < set) ? "day" : "night";
     }
   } catch (e) {}
+  // Inside Home Assistant the page sits in a frame below HA's own header: no notch to clear.
+  try { if (window.top !== window) document.documentElement.classList.add("in-ha"); } catch (e) { document.documentElement.classList.add("in-ha"); }
   const APPS = [
     {id: "house", name: "House", path: "/3dd8a0cc_house", note: "Today's light, shortcuts, devices, activity"},
     {id: "frame", name: "Frame", path: "/3dd8a0cc_frame", note: "Art on the Frame, collections and its schedule"},
