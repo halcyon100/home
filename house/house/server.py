@@ -15,10 +15,12 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
+from listen import Listen
+
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.6.0"
+VERSION = "0.8.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -269,8 +271,11 @@ class House:
 def make_app(house: House) -> web.Application:
     app = web.Application()
 
+    listen = Listen(house)
+
     async def on_start(_app):
         house.session = aiohttp.ClientSession()
+        app["listen_loop"] = asyncio.create_task(listen.loop())
 
     async def on_stop(_app):
         await house.session.close()
@@ -296,12 +301,41 @@ def make_app(house: House) -> web.Application:
         await house.do(await req.json())
         return web.json_response({"ok": True})
 
+    async def api_listen(_req):
+        return web.json_response(listen.view())
+
+    async def api_listen_feedback(req):
+        b = await req.json()
+        try:
+            listen.feedback(str(b.get("id")), b.get("verdict"))
+        except (KeyError, ValueError):
+            raise web.HTTPBadRequest(text="unknown pick or verdict")
+        return web.json_response(listen.view())
+
+    async def api_listen_play(req):
+        b = await req.json()
+        try:
+            await listen.play(str(b.get("id")), str(b.get("place", "main")))
+        except (KeyError, ValueError):
+            raise web.HTTPBadRequest(text="unknown pick or place")
+        return web.json_response({"ok": True})
+
+    async def api_listen_refresh(_req):
+        if not listen.busy:
+            asyncio.create_task(listen.refresh())
+        await asyncio.sleep(0.1)
+        return web.json_response(listen.view())
+
     app.on_startup.append(on_start)
     app.on_cleanup.append(on_stop)
     app.router.add_get("/", index)
     app.router.add_get("/api/state", api_state)
     app.router.add_get("/api/devices", api_devices)
     app.router.add_post("/api/do", api_do)
+    app.router.add_get("/api/listen", api_listen)
+    app.router.add_post("/api/listen/feedback", api_listen_feedback)
+    app.router.add_post("/api/listen/play", api_listen_play)
+    app.router.add_post("/api/listen/refresh", api_listen_refresh)
     app.router.add_static("/shared", WWW / "shared")
     return app
 
