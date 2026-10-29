@@ -303,7 +303,6 @@ async def test_holds_survive_restart(aiohttp_server, tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_keepoff_room_on_vs_direct(aiohttp_server):
-    from engine import keyframes_from_options, Schedule
     clock = Clock(datetime.combine(date(2026, 12, 1), time(8, 0), TZ))
     opts = dict(options(), keyframes=OPTS + [{"name": "km", "at": "07:00", "step": True,
                                               "lights": ["light.chand keepoff"]}])

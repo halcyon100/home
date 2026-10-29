@@ -1,0 +1,9 @@
+# Lint for real bugs (pyflakes, syntax, bugbear), not style.
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "B"]
+# Style choices this code makes on purpose: one-line statements, small lambdas, short names,
+# plain re-raises inside handlers.
+ignore = ["E702", "E731", "E741", "B904", "B008"]
