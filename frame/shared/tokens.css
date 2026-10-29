@@ -1,6 +1,6 @@
 /* House design tokens: one source for every app with a page (House, Frame).
- * Edit here, run tools/sync-shared. Day and night follow the sun: House records the sky,
- * appnav.js applies it to every app (falls back to the phone's light/dark setting).
+ * Edit here, run tools/sync-shared. Dark is the default for every app (David, 2026-10-29);
+ * the light palette remains for a page that sets data-theme="light".
  *
  * Colour      ground  page          ink    text        quiet  secondary text
  *             hair    hairlines     well   wells, inputs, night bands
@@ -8,7 +8,7 @@
  * Type        Archivo, one family; width carries the hierarchy (wide numerals, narrow labels)
  */
 :root{
-  --ground:#E4E7E3; --ink:#1B2124; --quiet:#687174; --hair:#C3C9C5; --well:#D7DCD8; --alert:#B4483C;
+  --ground:#0E151C; --ink:#D5DCE0; --quiet:#7B8790; --hair:#233039; --well:#141E27; --alert:#E38B7E;
   --light:#FFD9A8;
   --on-light:#1B2124;
   --step:clamp(15px,1.05vw + 11px,17px);
@@ -17,10 +17,9 @@
   --maxw:1180px;   /* content width; the app bar lines up with it */
   --face:"Archivo",system-ui,-apple-system,sans-serif;
   --r-s:3px; --r-pill:999px;
-  color-scheme:light;
+  color-scheme:dark;
 }
-:root[data-sky="night"]{--ground:#0E151C; --ink:#D5DCE0; --quiet:#7B8790; --hair:#233039; --well:#141E27; --alert:#E38B7E; color-scheme:dark}
-@media (prefers-color-scheme:dark){:root:not([data-sky]){--ground:#0E151C; --ink:#D5DCE0; --quiet:#7B8790; --hair:#233039; --well:#141E27; --alert:#E38B7E; color-scheme:dark}}
+:root[data-theme="light"]{--ground:#E4E7E3; --ink:#1B2124; --quiet:#687174; --hair:#C3C9C5; --well:#D7DCD8; --alert:#B4483C; color-scheme:light}
 
 *{box-sizing:border-box}
 html{background:var(--ground);color:var(--ink);-webkit-text-size-adjust:100%}

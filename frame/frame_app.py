@@ -883,6 +883,36 @@ def api_delete(ids: list) -> dict:
     return {"ok": True, "deleted": len(ids)}
 
 
+def api_reset(p: dict) -> dict:
+    """Start over: every photo you added comes off the TV, every collection and kept original goes.
+
+    Samsung's own art can't be removed and stays. Asked for from the page, behind a confirmation.
+    """
+    if p.get("confirm") != "everything":
+        raise ValueError("Confirmation missing.")
+    stop_playing()
+    LIB_CACHE["t"] = 0
+    ids = [i for i in my_photo_ids() if SAFE_ID.match(i)]
+    removed = 0
+    for k in range(0, len(ids), 20):
+        batch = ids[k:k + 20]
+        TVC.call(lambda a: a.delete_list(batch))
+        removed += len(batch)
+    for cid in ids:
+        drop_cache(cid)
+    for folder in (ORIGINALS, RECIPES):
+        for name in os.listdir(folder):
+            try:
+                os.remove(os.path.join(folder, name))
+            except OSError:
+                pass
+    forget_pictures(ids)
+    save_collections({})
+    LIB_CACHE["t"] = 0
+    log.info("Started over: removed %d photos, all collections and originals", removed)
+    return {"ok": True, "removed": removed}
+
+
 def api_artmode(on: bool) -> dict:
     TVC.call(lambda a: a.set_artmode(on))
     return {"ok": True}
@@ -1536,6 +1566,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(api_schedule_set(payload))
                 except ValueError as e:
                     return self.send_json({"error": str(e)}, 400)
+            if url.path == "/api/reset":
+                try:
+                    return self.send_json(api_reset(payload))
+                except ValueError as e:
+                    return self.send_json({"error": str(e)}, 400)
             if url.path == "/api/stop":
                 stop_playing()
                 return self.send_json({"ok": True})
@@ -1857,7 +1892,7 @@ details.panel:not([open])>summary{margin-bottom:0}
 .fview{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(14px,2vw,26px) var(--gut) 64px}
 .wallview{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:clamp(28px,5vw,64px);align-items:start}
 .wallview .wall{padding:0}
-.tv{max-width:300px}
+.tv{max-width:300px;box-shadow:0 0 0 1px var(--hair),0 14px 26px -14px rgba(0,0,0,.6)}
 .wall-side{display:grid;gap:clamp(26px,3.5vw,40px);max-width:34rem}
 .status{margin:0}
 .status h1{font:300 var(--s5)/1.02 var(--face);font-stretch:96%;letter-spacing:-.022em}
@@ -2021,6 +2056,8 @@ select,input[type=time]{min-height:44px}
     <p class="tool-note">Bring over sharp, uncropped previews from the laptop version: choose its
       “Frame cache for Home Assistant” folder.</p>
     <div><button class="btn ghost" id="import-btn" type="button">Import previews</button></div>
+    <p class="tool-note">Start over: remove every photo you've added from the Frame, along with all collections and the originals this app keeps. Samsung's own art stays.</p>
+    <div><button class="btn danger" id="reset-btn" type="button">Remove all photos</button></div>
     <input type="file" id="import-file" webkitdirectory multiple class="sr" tabindex="-1">
   </section>
 </section>
@@ -2112,6 +2149,15 @@ select,input[type=time]{min-height:44px}
   <div class="picklist" id="picklist"></div>
   <div class="bar">
     <button class="btn ghost" id="picker-cancel">Cancel</button>
+  </div>
+</dialog>
+
+<dialog id="wipe">
+  <h2>Remove every photo?</h2>
+  <p>All your photos come off the Frame, every collection is deleted, and so are the originals and framing this app keeps. Samsung's own art stays. This can't be undone.</p>
+  <div class="bar">
+    <button class="btn ghost" id="wipe-keep">Keep everything</button>
+    <button class="btn danger" id="wipe-go">Remove all photos</button>
   </div>
 </dialog>
 
@@ -3044,6 +3090,18 @@ $("#slot-add").onclick = () => {
 
 /* ---------- import previews from the laptop version ---------- */
 $("#import-btn").onclick = () => $("#import-file").click();
+$("#reset-btn").onclick = () => $("#wipe").showModal();
+$("#wipe-keep").onclick = () => $("#wipe").close();
+$("#wipe-go").onclick = async () => {
+  const b = $("#wipe-go"); b.disabled = true; b.textContent = "Removing…";
+  try {
+    const r = await post(B + "/api/reset", {confirm: "everything"});
+    $("#wipe").close();
+    toast("Removed " + r.removed + " photo" + (r.removed === 1 ? "" : "s") + ". The Frame is clear.");
+    await refreshLibrary(); await refreshRotation(); await refreshStatus();
+  } catch (e) { toast(e.message, true); }
+  finally { b.disabled = false; b.textContent = "Remove all photos"; }
+};
 $("#import-file").onchange = async e => {
   const files = Array.from(e.target.files || []).filter(f => /^[A-Za-z0-9_\-]{1,64}\.(img|jpe?g)$/i.test(f.name));
   e.target.value = "";
