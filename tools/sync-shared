@@ -8,3 +8,7 @@ for dest in house/house/www/shared frame/shared; do
   cp shared/appnav.js shared/tokens.css shared/archivo.woff2 shared/OFL-archivo.txt "$dest/"
 done
 echo "shared -> house, frame"
+# Stamp a content hash on the links so phones and browsers never keep an old copy.
+v=$(cat shared/appnav.js shared/tokens.css | sha1sum | cut -c1-8)
+sed -i -E "s#shared/(appnav\.js|tokens\.css)(\?v=[0-9a-f]+)?#shared/\1?v=$v#g" house/house/www/index.html frame/frame_app.py
+echo "stamped v=$v"
