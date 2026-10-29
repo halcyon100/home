@@ -18,7 +18,7 @@ from aiohttp import web
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -70,12 +70,20 @@ class House:
             log.warning("Logbook: %s", ex)
             return []
         want = set(self.activity) | set(self.motion) | set(self.shades) | {s["entity"] for s in self.shortcuts}
-        out, last_motion = [], {}
+        out, last_motion, via = [], {}, {}
         for r in sorted(rows, key=lambda x: x.get("when", "")):
             e = r.get("entity_id")
             if e not in want:
                 continue
             state = r.get("state")
+            if state is None:
+                # "Amazon Alexa sent command ..." / "started": note the source, keep the state row
+                msg = (r.get("name") or "") + " " + (r.get("message") or "")
+                if "Alexa" in msg and "ReportState" not in msg:
+                    via[e] = "Alexa"
+                continue
+            if state in ("opening", "closing"):
+                continue
             if e in self.motion:
                 # one line per visit: an "on" more than 15 minutes after the last one
                 if state not in ("on",):
@@ -85,13 +93,12 @@ class House:
                 last_motion[e] = t
                 if prev and (t - prev) < timedelta(minutes=15):
                     continue
-            elif e.startswith("script.") and state not in (None, "on"):
+            elif e.startswith("script.") and state != "on":
                 continue
             elif state in ("unavailable", "unknown"):
                 continue
             out.append({"when": r.get("when"), "entity": e, "name": r.get("name"), "state": state,
-                        "message": r.get("message"),
-                        "by": (r.get("context_user_id") is not None) or r.get("context_event_type") == "call_service"})
+                        "via": via.pop(e, None)})
         return out[-40:][::-1]
 
     async def state(self):

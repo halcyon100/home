@@ -248,12 +248,12 @@ function render(){
 }
 
 function say(a){
-  const n = a.name || a.entity, d = a.entity.split(".")[0];
-  if (d==="script") return `${n} ran`;
-  if (d==="input_boolean") return `${n} turned ${a.state}`;
-  if (d==="binary_sensor") return `Motion, ${n.replace(/ (motion|presence)$/i,"")}`;
-  if (d==="cover") return `${n} ${a.state}`;
-  if (a.state==="on"||a.state==="off") return `${n} ${a.state}${a.by?"":", not by the house"}`;
+  const n = a.name || a.entity, d = a.entity.split(".")[0], v = a.via ? `, from ${a.via}` : "";
+  if (d==="script") return `${n} ran${v}`;
+  if (d==="input_boolean") return `${n} turned ${a.state}${v}`;
+  if (d==="binary_sensor") return `Someone in ${n.replace(/ (motion|presence)$/i,"").replace(/^./,c=>c.toLowerCase())}`;
+  if (d==="cover") return `${n} ${a.state}${v}`;
+  if (a.state==="on"||a.state==="off") return `${n} ${a.state}${v}`;
   return `${n}, ${a.state}`;
 }
 
