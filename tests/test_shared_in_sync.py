@@ -6,7 +6,7 @@ COPIES = ["house/house/www/shared", "frame/shared"]
 
 
 def test_copies_match_shared():
-    for name in ("appnav.js", "archivo.woff2"):
+    for name in ("appnav.js", "tokens.css", "archivo.woff2"):
         src = (ROOT / "shared" / name).read_bytes()
         for c in COPIES:
             assert (ROOT / c / name).read_bytes() == src, f"{c}/{name} drifted: run tools/sync-shared"

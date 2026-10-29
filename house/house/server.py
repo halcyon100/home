@@ -18,7 +18,7 @@ from aiohttp import web
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 
 def load_options(path: str = "/data/options.json") -> dict:

@@ -19,6 +19,15 @@
     st.textContent = `@font-face{font-family:"Archivo";src:url("${new URL("archivo.woff2", here)}") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%;font-display:swap}`;
     document.head.appendChild(st);
   }
+  // Day or night, from the sun times House last recorded (shared across apps on this origin).
+  try {
+    const sun = JSON.parse(localStorage.getItem("house-sun") || "null");
+    if (sun && !document.documentElement.dataset.sky) {
+      const now = Date.now(), rise = Date.parse(sun.rise), set = Date.parse(sun.set);
+      if (now - rise < 36e5 * 30)   // only trust it for about a day
+        document.documentElement.dataset.sky = (now >= rise && now < set) ? "day" : "night";
+    }
+  } catch (e) {}
   const APPS = [
     {id: "house", name: "House", path: "/3dd8a0cc_house", note: "Today's light, shortcuts, devices, activity"},
     {id: "frame", name: "Frame", path: "/3dd8a0cc_frame", note: "Art on the Frame, collections and its schedule"},
@@ -55,7 +64,7 @@
   .sheet{position:fixed;left:0;right:0;bottom:0;background:var(--ground,Canvas);color:var(--ink,CanvasText);
     padding:22px max(20px,env(safe-area-inset-left)) calc(26px + env(safe-area-inset-bottom));border-radius:14px 14px 0 0;
     font-family:"Archivo",system-ui,sans-serif;animation:up .22s cubic-bezier(.2,.8,.2,1)}
-  @media (min-width:700px){.sheet{left:auto;right:24px;top:62px;bottom:auto;width:360px;border-radius:6px;
+  @media (min-width:700px){.sheet{left:auto;right:max(var(--gut,24px),calc((100vw - var(--maxw,1180px))/2));top:62px;bottom:auto;width:360px;border-radius:6px;
     box-shadow:0 1px 0 var(--hair,#ccc),0 18px 48px -12px color-mix(in srgb,#000 35%,transparent);animation:none}}
   @keyframes up{from{transform:translateY(24px);opacity:0}}
   @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
