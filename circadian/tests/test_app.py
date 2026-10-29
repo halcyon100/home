@@ -1,7 +1,7 @@
 """Integration test: run the app against a fake Home Assistant websocket."""
 import asyncio
 import sys
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -363,4 +363,74 @@ async def test_second_call_in_one_automation_run_is_its_own_request(aiohttp_serv
     await asyncio.sleep(0.05)
     assert not c.ov.track("light.nook").held
     assert any(x[2] == "light.nook" for x in fake.calls)
+    reader.cancel(); await ha.close()
+
+
+def daylight_options():
+    return dict(options(), daylight=[{"name": "kitchen", "sensor": "sensor.lux", "off_above": 250,
+                                      "on_below": 160, "off_after_minutes": 10,
+                                      "on_after_minutes": 3, "lights": ["light.nook", "light.cab"]}])
+
+
+async def set_lux(fake, value):
+    old = fake.states.get("sensor.lux") or st("sensor.lux", "0")
+    new = st("sensor.lux", str(value))
+    fake.states["sensor.lux"] = new
+    await fake.event("state_changed", {"entity_id": "sensor.lux", "old_state": old, "new_state": new})
+    await asyncio.sleep(0.02)
+
+
+@pytest.mark.asyncio
+async def test_daylight_turns_off_then_back_on(aiohttp_server):
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(12, 0), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, daylight_options(), clock)
+    await set_lux(fake, 400)
+    clock.dt += timedelta(minutes=11)
+    await c.daylight_step()
+    await asyncio.sleep(0.05)
+    offs = {x[2] for x in fake.calls if x[1] == "turn_off"}
+    assert offs == {"light.nook", "light.cab"}
+    assert c.daylight_off == {"light.nook", "light.cab"}
+    # the fake doesn't apply turn_off, so do it the way HA would report it (our context)
+    for e in ("light.nook", "light.cab"):
+        old = fake.states[e]
+        new = dict(old, state="off", context={"id": "x", "user_id": ME})
+        fake.states[e] = new
+        await fake.event("state_changed", {"entity_id": e, "old_state": old, "new_state": new})
+    await asyncio.sleep(0.02)
+    fake.calls.clear()
+    await set_lux(fake, 100)
+    clock.dt += timedelta(minutes=4)
+    await c.daylight_step()
+    await asyncio.sleep(0.05)
+    ons = {x[2] for x in fake.calls if x[1] == "turn_on"}
+    assert ons == {"light.nook", "light.cab"}
+    assert not c.daylight_off
+    reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_daylight_respects_person_and_goodnight(aiohttp_server):
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(12, 0), TZ))
+    fake, c, ha, reader = await boot(aiohttp_server, daylight_options(), clock)
+    await set_lux(fake, 400)
+    clock.dt += timedelta(minutes=11)
+    await c.daylight_step()
+    await asyncio.sleep(0.05)
+    # someone turns the nook back on while it's bright: leave it on today
+    old = dict(fake.states["light.nook"], state="off")
+    new = dict(old, state="on", context={"id": "p", "user_id": "someone"})
+    fake.states["light.nook"] = new
+    await fake.event("state_changed", {"entity_id": "light.nook", "old_state": old, "new_state": new})
+    await asyncio.sleep(0.02)
+    fake.calls.clear()
+    await c.daylight_step()
+    await asyncio.sleep(0.05)
+    assert not any(x[1] == "turn_off" and x[2] == "light.nook" for x in fake.calls)
+    # a floor-wide "goodnight" turn_off: nothing comes back on at dusk
+    await fake.event("call_service", {"domain": "light", "service": "turn_off",
+                                      "service_data": {"floor_id": ["main"]}},
+                     context={"id": "gn", "user_id": "someone"})
+    await asyncio.sleep(0.02)
+    assert not c.daylight_off
     reader.cancel(); await ha.close()

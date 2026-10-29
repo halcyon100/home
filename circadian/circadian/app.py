@@ -12,9 +12,10 @@ import aiohttp
 from astral import LocationInfo
 from astral.sun import sun as astral_sun
 
-from engine import KEEP_OFF, OFF, ON, Overrides, Schedule, keyframes_from_options, pct_to_255
+from engine import (KEEP_OFF, OFF, ON, Overrides, Schedule, daylight_zones_from_options,
+                    keyframes_from_options, pct_to_255)
 
-APP_VERSION = "0.2.6"
+APP_VERSION = "0.3.0"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -124,6 +125,11 @@ class Circadian:
         for spec in opts.get("quiet_when_occupied", []) or []:
             light, sensor = spec.split()
             self.quiet[light] = sensor
+        # Daylight: lights a zone's sensor says aren't needed go off, and come back when it darkens.
+        self.zones = daylight_zones_from_options(opts.get("daylight"))
+        self.zone_of = {e: z for z in self.zones for e in z.lights}
+        self.daylight_off: set[str] = set()          # lights we turned off for daylight
+        self.daylight_keep: dict[str, object] = {}   # light -> day someone turned it on in daylight
 
     # -------------------------------------------------- setup
     async def start(self):
@@ -144,6 +150,10 @@ class Circadian:
         for st in await self.ha.send({"type": "get_states"}):
             self.states[st["entity_id"]] = st
         self.ov.grace_until = datetime.now(self.tz) + timedelta(seconds=self.interval + 60)
+        for z in self.zones:
+            z.update((self.states.get(z.sensor) or {}).get("state"), datetime.now(self.tz))
+            if z.sensor not in self.states:
+                log.warning("Daylight zone %s: sensor %s not found", z.name, z.sensor)
         await self.ha.subscribe("state_changed", self.on_state_changed)
         await self.ha.subscribe("call_service", self.on_call_service)
         await self.ha.subscribe("circadian_wake", self.on_wake_event)
@@ -155,6 +165,9 @@ class Circadian:
         missing = [e for e in managed if e not in self.states]
         if missing:
             log.warning("Unknown entities in keyframes: %s", ", ".join(missing))
+        for z in self.zones:
+            log.info("Daylight zone %s: %s, off above %g lx, on below %g lx, %d lights",
+                     z.name, z.sensor, z.off_above, z.on_below, len(z.lights))
         today = datetime.now(self.tz).date()
         for t, k in self.schedule.wake_events(today):
             log.info("Today's wake: %s at %s", k.name, t.strftime("%H:%M"))
@@ -178,6 +191,7 @@ class Circadian:
     def on_reset_event(self, ev):
         """'Natural light': release every hold and put every lit light back on the schedule."""
         self.ov.release_all()
+        self.daylight_keep.clear()
         log.info("Reset requested: all holds released, back to the schedule")
         asyncio.get_running_loop().create_task(self.reset_all())
 
@@ -235,6 +249,9 @@ class Circadian:
 
     def on_call_service(self, ev):
         d = ev.get("data", {})
+        if (d.get("domain") == "light" and d.get("service") == "turn_off" and self.daylight_off
+                and not self._from_me(ev.get("context"))):
+            self._daylight_forget(d.get("service_data") or {})
         if d.get("domain") != "light" or d.get("service") not in ("turn_on", "toggle"):
             return
         sd = dict(d.get("service_data") or {})
@@ -288,6 +305,21 @@ class Circadian:
                         log.info("%s: plain 'on' while on, back to the curve", e)
                     asyncio.get_running_loop().create_task(self.apply(e, transition=2, why="plain on"))
 
+    def _daylight_forget(self, sd: dict):
+        """Someone turned lights off: those we turned off for daylight stay off."""
+        ents = sd.get("entity_id")
+        if ents is None:
+            # an area or floor command ("goodnight"): forget them all
+            if self.daylight_off:
+                log.info("Lights turned off by area or floor: %d daylight-off light(s) stay off",
+                         len(self.daylight_off))
+            self.daylight_off.clear()
+            return
+        ents = [ents] if isinstance(ents, str) else list(ents)
+        for e in self._expand(ents) & self.daylight_off:
+            self.daylight_off.discard(e)
+            log.info("%s: turned off by someone, stays off when daylight fades", e)
+
     def on_state_changed(self, ev):
         d = ev.get("data", {})
         e = d.get("entity_id")
@@ -297,6 +329,16 @@ class Circadian:
             self.states.pop(e, None)
             return
         self.states[e] = new
+        for z in self.zones:
+            if z.sensor == e:
+                z.update(new.get("state"), self.now())
+        z = self.zone_of.get(e)
+        if (z is not None and new.get("state") == "on" and (old or {}).get("state") != "on"
+                and not self._from_me(new.get("context"))):
+            self.daylight_off.discard(e)
+            if z.bright:
+                self.daylight_keep[e] = self.now().date()
+                log.info("%s: turned on in daylight, leaving it on today", e)
         if not self.schedule or e not in self.schedule.entities():
             return
         ctx = (new.get("context") or {}).get("id")
@@ -386,6 +428,53 @@ class Circadian:
                 await self.apply(e, transition=self.interval, why="tick")
             except Exception as ex:
                 log.warning("%s: update failed: %s", e, ex)
+        await self.daylight_step()
+
+    async def daylight_step(self):
+        if not self.zones or not self.enabled():
+            return
+        now = self.now()
+        today = now.date()
+        for z in self.zones:
+            was = z.bright
+            bright = z.evaluate(now)
+            if bright != was:
+                log.info("Daylight %s: %s (%s lx)", z.name, "enough, lights off" if bright else
+                         "fading, lights back on", "?" if z.lux is None else round(z.lux))
+            for e in sorted(z.lights):
+                st = (self.states.get(e) or {}).get("state")
+                tgt = self.schedule.target_at(e, self.vnow())
+                if bright:
+                    if (st != "on" or e in self.daylight_off or self.daylight_keep.get(e) == today
+                            or self.ov.track(e).held or tgt is None or tgt.kind != "level"):
+                        continue
+                    self.daylight_off.add(e)
+                    log.info("%s: off, daylight is enough (%s %g lx)", e, z.name, z.lux)
+                    try:
+                        await self.call("light", "turn_off", e, {"transition": 30})
+                    except Exception as ex:
+                        log.warning("%s: daylight off failed: %s", e, ex)
+                elif e in self.daylight_off:
+                    self.daylight_off.discard(e)
+                    if st != "off" or tgt is None or tgt.kind != "level":
+                        continue
+                    try:
+                        await self._turn_on_at(e, tgt, 30, now)
+                        log.info("%s: back on, daylight faded (%s)", e, z.name)
+                    except Exception as ex:
+                        log.warning("%s: daylight on failed: %s", e, ex)
+
+    async def _turn_on_at(self, e, tgt, transition, now):
+        data = {"brightness_pct": max(1, min(100, round(tgt.brightness))), "transition": transition}
+        attrs = (self.states.get(e) or {}).get("attributes", {})
+        if tgt.kelvin and "color_temp" in (attrs.get("supported_color_modes") or []):
+            lo = attrs.get("min_color_temp_kelvin") or 2000
+            hi = attrs.get("max_color_temp_kelvin") or 6500
+            data["color_temp_kelvin"] = max(lo, min(hi, tgt.kelvin))
+        self.ov.note_command(e, None, now, 0, tgt.brightness, data.get("color_temp_kelvin"), transition)
+        ctx = await self.call("light", "turn_on", e, data)
+        if ctx:
+            self.ov.our_contexts[ctx] = now
 
     async def wake_check(self):
         if not self.enabled():
@@ -414,6 +503,11 @@ class Circadian:
                 st = (self.states.get(e) or {}).get("state")
                 tr.woken.add(key)
                 if st == "on":
+                    continue
+                z = self.zone_of.get(e)
+                if z is not None and z.evaluate(self.now()) and tgt.kind == "level" and not tgt.via:
+                    self.daylight_off.add(e)   # comes on when the daylight fades
+                    log.info("Wake %s: %s waits, daylight is enough", k.name, e)
                     continue
                 try:
                     if tgt.kind == ON or tgt.via:
@@ -458,6 +552,8 @@ class Circadian:
             "held": {e: t.held_reason for e, t in tr.items() if t.held},
             "woken": {e: [[d.isoformat(), n] for d, n in sorted(t.woken)] for e, t in tr.items() if t.woken},
             "user_off": {e: t.user_off_day.isoformat() for e, t in tr.items() if t.user_off_day},
+            "daylight_off": sorted(self.daylight_off),
+            "daylight_keep": {e: d.isoformat() for e, d in self.daylight_keep.items()},
         }
 
     def save_state(self):
@@ -496,6 +592,11 @@ class Circadian:
         for e, d in data.get("user_off", {}).items():
             if d == today.isoformat():
                 self.ov.track(e).user_off_day = today
+        if saved >= self._last_reset(now):
+            self.daylight_off = {e for e in data.get("daylight_off", []) if e in self.zone_of}
+        for e, d in data.get("daylight_keep", {}).items():
+            if d == today.isoformat():
+                self.daylight_keep[e] = today
         n = sum(1 for t in self.ov.tracks.values() if t.held)
         if n:
             log.info("Restored %d held light(s) from before the restart", n)
