@@ -1,0 +1,30 @@
+name: Music
+version: "0.1.0"
+slug: music
+description: Every room's music at a glance, the turntable, and a weekly shelf of new records.
+url: https://github.com/halcyon100/home/tree/main/music
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+homeassistant_api: true
+ingress: true
+ingress_port: 8097
+panel_icon: mdi:music-circle-outline
+panel_title: Music
+panel_admin: false
+options:
+  zones: []
+  turntable: ""
+schema:
+  zones:
+    - name: str
+      floor: str
+      speaker: str
+      sonos: str
+      tv: str?
+  turntable: str?
+  listen_taste: str?
+  listen_ai_task: str?

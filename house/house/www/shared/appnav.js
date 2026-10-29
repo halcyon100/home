@@ -32,6 +32,7 @@
   try { if (window.top !== window) document.documentElement.classList.add("in-ha"); } catch (e) { document.documentElement.classList.add("in-ha"); }
   const APPS = [
     {id: "house", name: "House", path: "/3dd8a0cc_house", note: "Today's light, shortcuts, devices, activity"},
+    {id: "music", name: "Music", path: "/3dd8a0cc_music", note: "What's playing, the turntable, new records"},
     {id: "frame", name: "Frame", path: "/3dd8a0cc_frame", note: "Art on the Frame, collections and its schedule"},
     {id: "ha", name: "Home Assistant", path: "/lovelace/0", note: "Everything else"},
   ];
