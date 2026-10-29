@@ -18,7 +18,7 @@ from aiohttp import web
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -80,7 +80,12 @@ class House:
                 # "Amazon Alexa sent command ..." / "started": note the source, keep the state row
                 msg = (r.get("name") or "") + " " + (r.get("message") or "")
                 if "Alexa" in msg and "ReportState" not in msg:
-                    via[e] = "Alexa"
+                    prev = next((o for o in reversed(out[-3:]) if o["entity"] == e), None)
+                    if prev and abs((datetime.fromisoformat(r["when"]) -
+                                     datetime.fromisoformat(prev["when"])).total_seconds()) < 3:
+                        prev["via"] = "Alexa"      # logged just after the change it caused
+                    else:
+                        via[e] = "Alexa"
                 continue
             if state in ("opening", "closing"):
                 continue
