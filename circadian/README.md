@@ -33,3 +33,19 @@ keyframes:
       - switch.some_power on
       - light.later off             # not yet; a later wake keyframe brings it in
 ```
+
+### Brightness and color on their own schedules
+
+A keyframe sets both by default. `channel: brightness` sets only brightness; `channel: color` sets only
+color, written `light.x - 3200`. Each light's brightness follows the keyframes that set brightness and its
+color follows those that set color, so the evening can warm from sunset while dimming starts at a set time:
+
+```yaml
+  - {name: dusk, at: "18:30", channel: brightness, lights: [light.example 80]}
+  - {name: evening, at: sunset, channel: color, lights: [light.example - 3200]}
+  - {name: night, at: "21:30", lights: [light.example 12 2600]}
+```
+
+`boost_ease_from` (default `sunset`) is when Bright House starts easing back; it settles by the next
+keyframe that sets brightness.
+

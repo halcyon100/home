@@ -552,3 +552,15 @@ async def test_day_report_shape(aiohttp_server):
     assert r["boost"]["on"] and r["boost"]["mult_now"] == 1.5
     assert r["lights"]["light.nook"]["target"][0] == 86.2 or r["lights"]["light.nook"]["target"][0] > 80
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_boost_eases_from_a_set_time_to_the_next_brightness_keyframe(aiohttp_server):
+    from test_engine import SPLIT
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(12, 0), TZ))
+    opts = dict(options(), keyframes=SPLIT, boost=["light.a"], boost_ease_from="18:30")
+    fake, c, ha, reader = await boot(aiohttp_server, opts, clock)
+    await set_boost(fake, True)
+    s, e = c.boost_window(c.now())
+    assert (s.hour, s.minute, e.hour, e.minute) == (18, 30, 21, 30)   # sunset's color keyframe doesn't end it
+    reader.cancel(); await ha.close()

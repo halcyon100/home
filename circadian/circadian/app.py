@@ -16,7 +16,7 @@ from astral.sun import sun as astral_sun
 from engine import (KEEP_OFF, OFF, ON, SHUT, Overrides, Schedule, daylight_zones_from_options,
                     keyframes_from_options, pct_to_255, resolve)
 
-APP_VERSION = "0.4.2"
+APP_VERSION = "0.5.0"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -137,6 +137,7 @@ class Circadian:
         self.boost_entity = opts.get("boost_entity") or "input_boolean.circadian_boost"
         self.boost: set[str] = set(opts.get("boost", []) or [])
         self.boost_factor = float(opts.get("boost_factor", 1.5))
+        self.boost_ease_from = opts.get("boost_ease_from") or "sunset"
         self.boost_since: datetime | None = None
         self.boost_lit: set[str] = set()             # lights boost turned on
         self._boost_done = False                     # boost ended by itself
@@ -244,10 +245,12 @@ class Circadian:
         return bool(self.boost) and (self.states.get(self.boost_entity) or {}).get("state") == "on"
 
     def boost_window(self, now: datetime):
-        """(fade start, fade end) for the current boost."""
+        """(fade start, fade end) for the current boost: from `boost_ease_from` (sunset by
+        default, or when it was switched on if later) to the next keyframe that sets brightness."""
         since = self.boost_since or now
-        start = max(self.schedule.sun(since.date())[1], since)
-        times = sorted(t for off in (0, 1) for k in self.schedule.keyframes
+        ease = resolve(self.boost_ease_from, since.date(), self.schedule.sun, self.tz)
+        start = max(ease, since)
+        times = sorted(t for off in (0, 1) for k in self.schedule.keyframes if k.channel != "color"
                        if (t := resolve(k.at, start.date() + timedelta(days=off),
                                         self.schedule.sun, self.tz)) > start)
         return start, (times[0] if times else start + timedelta(hours=2))
@@ -773,7 +776,7 @@ class Circadian:
         for k in self.keyframes:
             try:
                 kf.append({"name": k.name, "at": resolve(k.at, now.date(), self.schedule.sun, self.tz).isoformat(),
-                           "wake": k.wake, "step": k.step})
+                           "wake": k.wake, "step": k.step, "channel": k.channel})
             except ValueError:
                 pass
         boost = {"on": boosting, "factor": self.boost_factor, "lights": sorted(self.boost)}
