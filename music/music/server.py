@@ -19,7 +19,7 @@ from listen import Listen
 log = logging.getLogger("music")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -77,7 +77,7 @@ class Music:
             if self.turntable and self.turntable in soa.get("group_members", []):
                 members.append("Turntable")
             state = sp.get("state") if sp.get("state") == "playing" else so.get("state", "unavailable")
-            pic = meta.get("entity_picture")
+            pic = meta.get("entity_picture_local") or meta.get("entity_picture")
             rooms.append({
                 "name": z["name"], "floor": z.get("floor", ""), "state": state,
                 "title": meta.get("media_title"), "artist": meta.get("media_artist"),
