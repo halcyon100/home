@@ -460,3 +460,26 @@ async def test_daylight_turns_off_unmanaged_light_but_does_not_restore_it(aiohtt
     await asyncio.sleep(0.05)
     assert not any(x[1] == "turn_on" for x in fake.calls)
     reader.cancel(); await ha.close()
+
+
+@pytest.mark.asyncio
+async def test_evening_keyframe_trades_lights(aiohttp_server):
+    # at sunset: chandelier off once, island (off) turned on; runs even if someone turned it off today
+    clock = Clock(datetime.combine(date(2026, 12, 1), time(17, 0), TZ))
+    opts = dict(options(), keyframes=OPTS + [{"name": "path", "at": "17:00", "wake": True,
+                                              "lights": ["light.chand shutoff", "light.island 30 2400"]}])
+    fake, c, ha, reader = await boot(aiohttp_server, opts, clock)
+    fake.states["light.chand"] = st("light.chand", "on", brightness=200)
+    c.states["light.chand"] = fake.states["light.chand"]
+    c.ov.track("light.island").user_off_day = clock.dt.date()
+    await c.wake_check()
+    await asyncio.sleep(0.05)
+    assert ("light", "turn_off", "light.chand", {"transition": 60}) in fake.calls
+    assert any(x[1] == "turn_on" and x[2] == "light.island" for x in fake.calls)
+    # once only: a person turning the chandelier back on is left alone
+    fake.calls.clear()
+    clock.dt += timedelta(minutes=5)
+    await c.wake_check()
+    await asyncio.sleep(0.05)
+    assert not fake.calls
+    reader.cancel(); await ha.close()

@@ -1,5 +1,5 @@
 name: Circadian
-version: "0.3.1"
+version: "0.3.2"
 slug: circadian
 description: Glides lights between hand-tuned keyframes through the day, with a sun-gated morning wake. Manual changes always win.
 url: https://github.com/halcyon100/home/tree/main/circadian
