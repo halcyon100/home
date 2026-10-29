@@ -1951,6 +1951,20 @@ select,input[type=time]{min-height:44px}
 .seg{min-width:0}
 .seg button{min-width:0;min-height:40px}
 @media (max-width:860px){.editor{grid-template-columns:minmax(0,1fr)}}
+
+/* Photo sheet: tap a photo for what you can do with it */
+dialog.photo-d{max-width:min(620px,calc(100vw - 32px));width:100%;padding:20px}
+.ph-wrap{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:22px;align-items:start}
+.ph-wrap img{width:100%;aspect-ratio:9/16;object-fit:contain;background:var(--well);display:block}
+.ph-side h2{margin:0 0 4px}
+.ph-side p{margin:0 0 18px;font-size:var(--s-1);font-stretch:88%;color:var(--quiet)}
+.ph-acts{display:grid;gap:10px}
+.ph-acts .btn{width:100%}
+.btn.ghost.danger-t{color:var(--alert)}
+@media (max-width:560px){
+  dialog.photo-d{margin:auto 0 0;max-width:100vw;border-radius:14px 14px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+  .ph-wrap{grid-template-columns:96px minmax(0,1fr);gap:16px}
+}
 </style>
 </head>
 <body>
@@ -2164,6 +2178,24 @@ select,input[type=time]{min-height:44px}
   </div>
 </dialog>
 
+<dialog id="photo" class="photo-d" aria-labelledby="ph-title">
+  <div class="ph-wrap">
+    <img id="ph-img" alt="">
+    <div class="ph-side">
+      <h2 id="ph-title">Photo</h2>
+      <p id="ph-sub"></p>
+      <div class="ph-acts">
+        <button class="btn" id="ph-show">Show on the Frame</button>
+        <button class="btn ghost" id="ph-reframe">Reframe</button>
+        <button class="btn ghost" id="ph-add">Add to collection</button>
+        <button class="btn ghost" id="ph-remove" hidden>Remove from collection</button>
+        <button class="btn ghost danger-t" id="ph-delete">Delete</button>
+        <button class="btn ghost" id="ph-close">Close</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="wipe">
   <h2>Remove every photo?</h2>
   <p>All your photos come off the Frame, every collection is deleted, and so are the originals and framing this app keeps. Samsung's own art stays. This can't be undone.</p>
@@ -2316,11 +2348,11 @@ function renderLibrary() {
     if (it.id === status.current) li.classList.add("current");
     if (selected.has(it.id)) li.classList.add("sel");
     const b = document.createElement("button"); b.className = "pic";
-    b.setAttribute("aria-label", selecting ? "Select " + it.id : "Put " + it.id + " on the wall");
+    b.setAttribute("aria-label", selecting ? "Select " + it.id : "Open " + it.id);
     const im = new Image(); im.loading = "lazy"; im.alt = ""; im.onload = () => im.classList.add("in");
     im.onerror = () => { b.classList.add("noprev"); b.dataset.label = it.id; };
     im.src = B+"/thumb/" + encodeURIComponent(it.id) + (it.v ? "?v=" + it.v : "");
-    b.append(im); b.onclick = () => selecting ? toggleSel(it.id, li) : show(it.id);
+    b.append(im); b.onclick = () => selecting ? toggleSel(it.id, li) : openPhoto(it.id);
     li.innerHTML = '<span class="tick"></span>';
     li.prepend(b);
     li.insertAdjacentHTML("beforeend", '<div class="label"></div><div class="cap">On the wall</div>');
@@ -2338,6 +2370,29 @@ async function show(id) {
     status.current = id; status.artmode = true; renderStatus(); toast("Now on the wall");
   } catch (e) { toast(e.message, true); }
 }
+
+/* ---------- one photo: tap it for what you can do with it ---------- */
+function openPhoto(id) {
+  const it = byId(id) || {id}, inCol = tab.startsWith("c:"), col = inCol ? lib.collections[tab.slice(2)] : null;
+  const d = $("#photo");
+  $("#ph-img").src = B + "/thumb/" + encodeURIComponent(id) + (it.v ? "?v=" + it.v : "");
+  $("#ph-title").textContent = id === status.current ? "On the wall now" : (it.date ? String(it.date).slice(0, 10).replace(/:/g, "-") : "Photo");
+  const inCols = Object.values(lib.collections || {}).filter(c => c.items.includes(id)).map(c => c.name);
+  $("#ph-sub").textContent = inCols.length ? "In " + inCols.join(", ") : "Not in a collection";
+  $("#ph-show").hidden = id === status.current;
+  $("#ph-reframe").hidden = !it.orig;
+  $("#ph-remove").hidden = !inCol; if (col) $("#ph-remove").textContent = "Remove from " + col.name;
+  $("#ph-delete").hidden = !String(id).toUpperCase().startsWith("MY");
+  d.dataset.id = id; d.showModal();
+}
+const one = (fn) => () => { const id = $("#photo").dataset.id; $("#photo").close(); selected.clear(); selected.add(id); fn(); };
+$("#ph-show").onclick = () => { const id = $("#photo").dataset.id; $("#photo").close(); show(id); };
+$("#ph-reframe").onclick = one(() => $("#reframe-btn").onclick());
+$("#ph-add").onclick = one(() => $("#addto-btn").onclick());
+$("#ph-remove").onclick = one(() => $("#takeout-btn").onclick());
+$("#ph-delete").onclick = one(() => $("#delete-btn").onclick());
+$("#ph-close").onclick = () => $("#photo").close();
+$("#photo").addEventListener("click", e => { if (e.target === $("#photo")) $("#photo").close(); });
 
 /* ---------- select, delete, add to collection ---------- */
 function setSelecting(on) {
