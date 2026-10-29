@@ -160,6 +160,47 @@ ol.log.big{font-size:var(--s0)}
 .zone p{margin:0;font-size:var(--s-1);font-stretch:88%;color:var(--quiet);max-width:44ch}
 .zone p b{color:var(--ink);font-weight:500}
 
+/* Listen: the week's records, set like a magazine page */
+.lk{font-size:var(--s-1);font-stretch:82%;color:var(--quiet);letter-spacing:.01em;display:flex;flex-wrap:wrap;gap:.3em 1.4em}
+.lk b{color:var(--ink);font-weight:500}
+.lh{margin:.35em 0 .2em;font-size:var(--s5);line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.022em}
+.lh em{font-style:normal;font-weight:520;font-stretch:122%;letter-spacing:-.035em}
+.lbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:clamp(18px,2.4vw,28px) 0 clamp(22px,3vw,36px)}
+.seg{display:inline-flex;border:1px solid var(--hair);border-radius:var(--r-pill);overflow:hidden}
+.seg button{appearance:none;border:0;background:none;padding:.42em .95em .46em;font-size:var(--s-1);font-stretch:86%;color:var(--quiet);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+.lbar .t-quiet{margin-right:-6px}
+.recs{display:grid;gap:clamp(34px,4vw,56px) clamp(22px,3vw,40px);grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.rec{display:flex;flex-direction:column;min-width:0}
+.rec .art{position:relative;aspect-ratio:1;background:var(--well);border-radius:2px;overflow:hidden}
+.rec .art img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.rec:hover .art img{transform:scale(1.015)}
+.rec .art .tag{position:absolute;left:10px;top:10px;background:var(--ground);color:var(--ink);font-size:11.5px;font-stretch:84%;letter-spacing:.06em;text-transform:uppercase;padding:.3em .6em .32em;border-radius:2px}
+.rec .label{margin:14px 0 6px;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;font-stretch:118%;font-weight:560;color:var(--quiet);
+  display:flex;justify-content:space-between;gap:1em}
+.rec .label span:last-child{letter-spacing:.04em;font-stretch:84%;font-weight:400;text-transform:none}
+.rec h3{margin:0;font-size:var(--s3);line-height:1.02;font-weight:560;font-stretch:118%;letter-spacing:-.03em;overflow-wrap:anywhere}
+.rec .al{margin:.18em 0 0;font-size:var(--s1);font-weight:330;font-stretch:96%;letter-spacing:-.01em;line-height:1.2}
+.rec .why{margin:.75em 0 0;color:var(--quiet);line-height:1.45;max-width:46ch}
+.rec .src{margin:.5em 0 0;font-size:var(--s-1);font-stretch:84%;color:var(--quiet)}
+.rec .src a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px}
+.rec .row{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:16px}
+.rec .row .grow{flex:1}
+.ib{appearance:none;width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--hair);border-radius:50%;background:none;cursor:pointer;color:var(--quiet)}
+.ib svg{width:17px;height:17px}
+.ib:hover{color:var(--ink);border-color:var(--ink)}
+.ib[aria-pressed="true"]{background:var(--light);border-color:var(--light);color:var(--on-light)}
+.rec .play{display:inline-flex;align-items:center;gap:.5em}
+.rec .play svg{width:12px;height:12px}
+.rec .play.busy{opacity:.5}
+.rec .sp{font-size:var(--s-1);font-stretch:86%;color:var(--quiet);text-decoration:none;white-space:nowrap}
+.rec .sp:hover{color:var(--ink)}
+.rec.liked .art{box-shadow:0 0 0 2px var(--light)}
+.rec.passed{opacity:.55}
+.lfoot{margin-top:clamp(40px,5vw,64px);display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;color:var(--quiet);font-size:var(--s-1);font-stretch:86%}
+.lwait{color:var(--quiet);font-stretch:88%}
+.lwait b{color:var(--ink);font-weight:500}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -167,6 +208,7 @@ ol.log.big{font-size:var(--s0)}
 <app-bar app="house"><nav slot="tabs" class="app-tabs" role="tablist" aria-label="House">
   <button role="tab" data-v="now" aria-selected="true">Now</button>
   <button role="tab" data-v="devices" aria-selected="false">Devices</button>
+  <button role="tab" data-v="listen" aria-selected="false">Listen</button>
   <button role="tab" data-v="activity" aria-selected="false">Activity</button>
 </nav></app-bar>
 <main>
@@ -197,6 +239,13 @@ ol.log.big{font-size:var(--s0)}
   <nav class="jump" id="jump" aria-label="Find a device"></nav>
   <div class="dev-shades"><h2>Curtains and shades</h2><dl id="dshades"></dl></div>
   <div id="floors"><p class="err">Finding the rooms.</p></div>
+</section>
+<section id="v-listen" role="tabpanel" aria-label="Listen" hidden>
+  <header class="lk" id="lk"></header>
+  <h1 class="lh" id="lh">Records for the week</h1>
+  <div class="lbar" id="lbar"></div>
+  <div class="recs" id="recs"></div>
+  <footer class="lfoot" id="lfoot"></footer>
 </section>
 <section id="v-activity" role="tabpanel" aria-label="Activity" hidden>
   <div class="field act-field">
@@ -499,9 +548,10 @@ let view = "now";
 function show(v){
   view = v;
   document.querySelectorAll(".app-tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.v===v));
-  ["now","devices","activity"].forEach(x=>$("v-"+x).hidden = x!==v);
+  ["now","devices","listen","activity"].forEach(x=>$("v-"+x).hidden = x!==v);
   try{ sessionStorage.setItem("house-view", v); }catch(e){}
   if (v==="devices") loadDevices();
+  if (v==="listen") loadListen();
   window.scrollTo(0,0);
 }
 
@@ -551,6 +601,71 @@ document.addEventListener("click",e=>{
   if (b){ armedFor = null; const tog = b.hasAttribute("aria-pressed"); act({entity:b.dataset.e, op: tog ? (b.getAttribute("aria-pressed")==="true"?"off":"on") : "run"}, b); return; }
   const c = e.target.closest("[data-c]");
   if (c) act({entity:c.dataset.c, op:c.dataset.op}, c);
+});
+
+/* Listen */
+let L = null, place = "main", listenTimer = null;
+try{ place = localStorage.getItem("house-place") || "main"; }catch(e){}
+const ICON = {
+  up:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6 8.2 8.8 2.6c1 0 1.7.8 1.6 1.8l-.3 2.6h3.6c.9 0 1.6.9 1.4 1.8l-1.1 5c-.2.7-.8 1.2-1.5 1.2H6m0-6.8v6.8m0-6.8H3.4v6.8H6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`,
+  down:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M12 9.8 9.2 15.4c-1 0-1.7-.8-1.6-1.8l.3-2.6H4.3c-.9 0-1.6-.9-1.4-1.8l1.1-5c.2-.7.8-1.2 1.5-1.2H12m0 6.8V3m0 6.8h2.6V3H12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`,
+  x:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M5 5l8 8M13 5l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  play:`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>`,
+};
+async function loadListen(){
+  try{
+    const r = await fetch("api/listen",{cache:"no-store"}); L = await r.json(); renderListen();
+  }catch(e){ $("recs").innerHTML = `<p class="lwait">Couldn't reach the record shelf.</p>`; }
+  clearTimeout(listenTimer);
+  if (L && L.busy && view==="listen") listenTimer = setTimeout(loadListen, 5000);
+}
+function renderListen(){
+  const picks = L.picks||[], nw = picks.filter(p=>p.kind==="new").length, sh = picks.length-nw;
+  const when = L.generated ? new Date(L.generated) : null;
+  $("lk").innerHTML = `<span><b>${esc(L.season||"This week")}</b></span>`+
+    (picks.length?`<span><b>${nw}</b> new ${nw===1?"record":"records"}${sh?`, <b>${sh}</b> from your shelf`:""}</span>`:"")+
+    (when?`<span>Picked ${when.toLocaleDateString(undefined,{weekday:"long"})} from this season's reviews</span>`:"");
+  $("lh").innerHTML = picks.length ? `Records for <em>the week</em>` : `Nothing on the shelf <em>yet</em>`;
+  $("lbar").innerHTML = `<span class="t-quiet">Play on</span><div class="seg" role="group" aria-label="Play on">${
+    Object.entries(L.places||{}).map(([k,n])=>`<button data-place="${k}" aria-pressed="${k===place}">${esc(n)}</button>`).join("")}</div>`;
+  $("recs").innerHTML = picks.map(p=>{
+    const v = p.verdict, art = p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : "";
+    return `<article class="rec ${v==="up"?"liked":v==="down"?"passed":""}">
+      <div class="art">${art}${p.kind==="second"?`<span class="tag">Second listen</span>`:""}</div>
+      <div class="label"><span>${esc(p.label||p.lane||"")}</span><span>${esc(p.released||"")}</span></div>
+      <h3>${esc(p.artist)}</h3><p class="al">${esc(p.album)}</p>
+      <p class="why">${esc(p.why)}</p>
+      ${p.source?`<p class="src">${p.source_url?`<a href="${esc(p.source_url)}" target="_blank" rel="noopener">via ${esc(p.source)}</a>`:`via ${esc(p.source)}`}${p.lane&&p.label?` · ${esc(p.lane)}`:""}</p>`:""}
+      <div class="row">
+        <button class="btn small play" data-lplay="${p.id}">${ICON.play}Play</button>
+        <a class="sp grow" href="${esc(p.spotify_url)}" target="_blank" rel="noopener">Spotify ↗</a>
+        <button class="ib" data-lv="${p.id}" data-verdict="up" aria-label="More like this" aria-pressed="${v==="up"}">${ICON.up}</button>
+        <button class="ib" data-lv="${p.id}" data-verdict="down" aria-label="Less like this" aria-pressed="${v==="down"}">${ICON.down}</button>
+        <button class="ib" data-lv="${p.id}" data-verdict="dismiss" aria-label="Hide, no judgment">${ICON.x}</button>
+      </div></article>`;
+  }).join("");
+  $("lfoot").innerHTML = L.busy
+    ? `<span class="lwait"><b>Reading this season's reviews</b> and checking Spotify. A minute or two.</span>`
+    : `<span>${L.error?esc(L.error)+" ":""}New picks arrive Friday mornings. Thumbs steer the next ones; × just hides a card.</span>
+       <button class="btn ghost small" data-lrefresh>Pick again now</button>`;
+}
+async function listenPost(path, body){
+  const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})});
+  if (!r.ok) throw new Error(r.status); return r.json();
+}
+document.addEventListener("click", async e=>{
+  const pl = e.target.closest("[data-place]");
+  if (pl){ place = pl.dataset.place; try{ localStorage.setItem("house-place", place); }catch(x){} renderListen(); return; }
+  const lv = e.target.closest("[data-lv]");
+  if (lv){ const p = L.picks.find(x=>x.id===lv.dataset.lv), want = lv.dataset.verdict;
+    const verdict = (p && p.verdict===want && want!=="dismiss") ? null : want;
+    try{ L = await listenPost("api/listen/feedback",{id:lv.dataset.lv, verdict}); renderListen(); }catch(x){} return; }
+  const lp = e.target.closest("[data-lplay]");
+  if (lp){ lp.classList.add("busy"); lp.lastChild.textContent = "Starting";
+    try{ await listenPost("api/listen/play",{id:lp.dataset.lplay, place}); lp.lastChild.textContent = "Playing"; }
+    catch(x){ lp.lastChild.textContent = "Didn't start"; }
+    setTimeout(()=>{ lp.classList.remove("busy"); lp.lastChild.textContent = "Play"; }, 4000); return; }
+  if (e.target.closest("[data-lrefresh]")){ try{ L = await listenPost("api/listen/refresh"); renderListen(); loadListen(); }catch(x){} }
 });
 
 /* Scrub the day: point or drag across the graph to read any moment. */
