@@ -34,6 +34,10 @@ class Keyframe:
     step: bool = False                      # no glide into this keyframe; previous values hold until it
     wake: bool = False                      # may turn lights on at this time
     wake_if_sunrise_after: time | None = None
+    channel: str = "both"                   # "both", "brightness" or "color": what this keyframe sets
+
+
+CHANNELS = ("both", "brightness", "color")
 
 
 def parse_light(spec: str) -> tuple[str, Target]:
@@ -52,6 +56,10 @@ def parse_light(spec: str) -> tuple[str, Target]:
     if len(parts) < 2:
         raise ValueError(f"missing value in {spec!r}")
     val = parts[1].lower()
+    if val == "-":   # color only: 'light.x - 3200'
+        if len(parts) < 3:
+            raise ValueError(f"missing kelvin in {spec!r}")
+        return entity, Target(None, int(parts[2]), "level", via)
     if val == OFF:
         return entity, Target(None, None, OFF, via)
     if val == ON:
@@ -80,10 +88,21 @@ def keyframes_from_options(raw: list[dict]) -> list[Keyframe]:
         lights = dict(parse_light(s) for s in k.get("lights", []))
         if not _TIME_RE.match(k["at"]):
             raise ValueError(f"bad time {k['at']!r} in keyframe {k.get('name')!r}")
+        channel = k.get("channel") or "both"
+        if channel not in CHANNELS:
+            raise ValueError(f"bad channel {channel!r} in keyframe {k.get('name')!r}")
+        if channel == "color":
+            if k.get("wake"):
+                raise ValueError(f"color-only keyframe {k.get('name')!r} can't wake lights")
+            bad = [e for e, t in lights.items() if t.kind != "level" or not t.kelvin]
+            if bad:
+                raise ValueError(f"color-only keyframe {k.get('name')!r} needs a kelvin for {', '.join(bad)}")
+        elif any(t.kind == "level" and t.brightness is None for t in lights.values()):
+            raise ValueError(f"keyframe {k.get('name')!r}: '-' (no brightness) only belongs in a color keyframe")
         out.append(Keyframe(
             name=k["name"], at=k["at"], lights=lights,
             step=bool(k.get("step", False)), wake=bool(k.get("wake", False)),
-            wake_if_sunrise_after=parse_hhmm(k.get("wake_if_sunrise_after"))))
+            wake_if_sunrise_after=parse_hhmm(k.get("wake_if_sunrise_after")), channel=channel))
     return out
 
 
@@ -121,19 +140,30 @@ class Schedule:
     def entities(self) -> set[str]:
         return {e for k in self.keyframes for e in k.lights}
 
-    def points(self, entity: str, now: datetime):
+    def points(self, entity: str, now: datetime, channels=("both", "brightness", "color")):
         """(time, target, step) for this entity across yesterday..tomorrow, sorted."""
         pts = []
         for offset in (-1, 0, 1):
             day = (now + timedelta(days=offset)).date()
             for k in self.keyframes:
-                if entity in k.lights:
+                if entity in k.lights and k.channel in channels:
                     pts.append((resolve(k.at, day, self.sun, self.tz), k.lights[entity], k.step))
         pts.sort(key=lambda p: p[0])
         return pts
 
     def target_at(self, entity: str, now: datetime) -> Target | None:
-        pts = self.points(entity, now)
+        """Brightness follows keyframes that set it; color follows keyframes that set it.
+        A keyframe with no channel sets both, so lights without split keyframes behave as before."""
+        tb = self._track(self.points(entity, now, ("both", "brightness")), now)
+        if tb is None or tb.kind != "level":
+            return tb
+        if not any(k.channel == "color" and entity in k.lights for k in self.keyframes):
+            return tb
+        tk = self._track(self.points(entity, now, ("both", "color")), now, color=True)
+        k = tk.kelvin if tk is not None and tk.kind == "level" else tb.kelvin
+        return Target(tb.brightness, k, "level", tb.via)
+
+    def _track(self, pts, now: datetime, color: bool = False) -> Target | None:
         prev = next_ = None
         for p in pts:
             if p[0] <= now:
@@ -150,14 +180,14 @@ class Schedule:
         nt = next_[1]
         span = (next_[0] - prev[0]).total_seconds()
         f = 0.0 if span <= 0 else (now - prev[0]).total_seconds() / span
-        b = pt.brightness + (nt.brightness - pt.brightness) * f
+        b = None if pt.brightness is None or nt.brightness is None else pt.brightness + (nt.brightness - pt.brightness) * f
         k = None
         if pt.kelvin and nt.kelvin:
             m = _mired(pt.kelvin) + (_mired(nt.kelvin) - _mired(pt.kelvin)) * f
             k = int(round(1_000_000 / m))
         else:
             k = pt.kelvin or nt.kelvin
-        return Target(round(b, 1), k, "level", pt.via)
+        return Target(None if b is None else round(b, 1), k, "level", pt.via)
 
     def wake_events(self, day: date, ignore_gate: bool = False):
         """[(time, keyframe)] for wake keyframes whose gate passes on this day."""

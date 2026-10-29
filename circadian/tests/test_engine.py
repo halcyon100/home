@@ -252,3 +252,41 @@ def test_daylight_zone_validation():
         daylight_zones_from_options([
             {"sensor": "a", "off_above": 200, "on_below": 100, "lights": ["light.x"]},
             {"sensor": "b", "off_above": 200, "on_below": 100, "lights": ["light.x"]}])
+
+
+SPLIT = [
+    {"name": "day", "at": "12:00", "lights": ["light.a 80 4000"]},
+    {"name": "dusk", "at": "18:30", "channel": "brightness", "lights": ["light.a 80"]},
+    {"name": "evening", "at": "sunset", "channel": "color", "lights": ["light.a - 3100"]},
+    {"name": "night", "at": "21:30", "lights": ["light.a 12 2600"]},
+]
+
+
+def test_color_and_brightness_follow_their_own_keyframes():
+    s = Schedule(keyframes_from_options(SPLIT), sun_winter, TZ)   # winter sunset is before 18:30
+    sunset = sun_winter(date(2026, 12, 1))[1]
+    # afternoon: brightness flat at 80 until 18:30; color already warming toward sunset
+    t = s.target_at("light.a", datetime.combine(date(2026, 12, 1), time(15, 0), TZ))
+    assert t.brightness == 80 and 3100 < t.kelvin < 4000
+    assert s.target_at("light.a", sunset).kelvin == 3100
+    t = s.target_at("light.a", datetime.combine(date(2026, 12, 1), time(18, 30), TZ))
+    assert t.brightness == 80 and 2600 < t.kelvin < 3100
+    t = s.target_at("light.a", datetime.combine(date(2026, 12, 1), time(20, 0), TZ))
+    assert 12 < t.brightness < 80
+    t = s.target_at("light.a", datetime.combine(date(2026, 12, 1), time(21, 30), TZ))
+    assert (t.brightness, t.kelvin) == (12, 2600)
+
+
+def test_lights_without_split_keyframes_are_unchanged():
+    s = Schedule(keyframes_from_options(OPTS), sun_winter, TZ)
+    t = s.target_at("light.nook", at(20, 0, date(2026, 12, 1)))
+    assert t.brightness == 25 and t.kelvin is not None
+
+
+def test_color_keyframe_rules():
+    with pytest.raises(ValueError):
+        keyframes_from_options([{"name": "x", "at": "18:00", "channel": "color", "lights": ["light.a 40"]}])
+    with pytest.raises(ValueError):
+        keyframes_from_options([{"name": "x", "at": "18:00", "lights": ["light.a - 3000"]}])
+    with pytest.raises(ValueError):
+        keyframes_from_options([{"name": "x", "at": "18:00", "channel": "color", "wake": True, "lights": ["light.a - 3000"]}])
