@@ -9,13 +9,14 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import aiohttp
+from aiohttp import web
 from astral import LocationInfo
 from astral.sun import sun as astral_sun
 
 from engine import (KEEP_OFF, OFF, ON, SHUT, Overrides, Schedule, daylight_zones_from_options,
                     keyframes_from_options, pct_to_255, resolve)
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -735,9 +736,81 @@ class Circadian:
             log.info("Restored %d held light(s) from before the restart", n)
         self._saved = self.snapshot()
 
+    # -------------------------------------------------- read-only API for the house portal
+    def day_report(self) -> dict:
+        now = self.now()
+        vnow = self.vnow()
+        day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        sunrise, sunset = self.schedule.sun(now.date())
+        samples = [day0 + timedelta(minutes=10 * i) for i in range(145)]
+        boosting = self.boosting()
+        lights = {}
+        for e in sorted(self.schedule.entities()):
+            if e.split(".")[0] != "light":
+                continue
+            st = self.states.get(e) or {}
+            a = st.get("attributes", {})
+            t = self.ov.track(e)
+            curve = []
+            for ts in samples:
+                tgt = self.schedule.target_at(e, ts)
+                curve.append([round(tgt.brightness, 1), tgt.kelvin] if tgt is not None and tgt.kind == "level"
+                             else None)
+            w = self.want(e, vnow)
+            lights[e] = {
+                "name": a.get("friendly_name", e),
+                "state": st.get("state"),
+                "brightness": round(a["brightness"] / 2.55) if a.get("brightness") else None,
+                "kelvin": a.get("color_temp_kelvin"),
+                "target": [round(w[0], 1), w[1]] if w else None,
+                "held": t.held, "held_reason": t.held_reason,
+                "zone": self.zone_of[e].name if e in self.zone_of else None,
+                "daylight_off": e in self.daylight_off,
+                "boost": e in self.boost,
+                "curve": curve,
+            }
+        kf = []
+        for k in self.keyframes:
+            try:
+                kf.append({"name": k.name, "at": resolve(k.at, now.date(), self.schedule.sun, self.tz).isoformat(),
+                           "wake": k.wake, "step": k.step})
+            except ValueError:
+                pass
+        boost = {"on": boosting, "factor": self.boost_factor, "lights": sorted(self.boost)}
+        if boosting:
+            s, e = self.boost_window(now)
+            boost.update(since=self.boost_since.isoformat() if self.boost_since else None,
+                         ease_from=s.isoformat(), ease_to=e.isoformat(),
+                         mult=[round(self.boost_mult(ts), 3) if ts >= now else None for ts in samples],
+                         mult_now=round(self.boost_mult(now), 3))
+        return {
+            "version": APP_VERSION, "now": now.isoformat(), "enabled": self.enabled(),
+            "sunrise": sunrise.isoformat(), "sunset": sunset.isoformat(),
+            "step_minutes": 10, "day_start": day0.isoformat(),
+            "keyframes": sorted(kf, key=lambda x: x["at"]), "boost": boost,
+            "zones": [{"name": z.name, "sensor": z.sensor, "lux": z.lux, "bright": z.bright,
+                       "off_above": z.off_above, "on_below": z.on_below} for z in self.zones],
+            "early_wake": bool(self.early_wake),
+            "lights": lights,
+        }
+
+    async def serve_api(self, port: int):
+        async def day(_req):
+            return web.json_response(self.day_report())
+        api = web.Application()
+        api.router.add_get("/api/day", day)
+        runner = web.AppRunner(api, access_log=None)
+        await runner.setup()
+        await web.TCPSite(runner, "0.0.0.0", port).start()
+        log.info("Read-only API on port %d", port)
+
     async def run(self):
         await self.start()
         self.load_state()
+        try:
+            await self.serve_api(int(self.opts.get("api_port", 8810)))
+        except Exception as ex:
+            log.warning("API not started: %s", ex)
         last_tick = None
         while True:
             self.reset_check()
