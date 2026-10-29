@@ -5,32 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>House</title>
+<link rel="stylesheet" href="shared/tokens.css">
 <script src="shared/appnav.js"></script>
 <style>
 
-/* Tokens. Day and night follow the sun, not the phone. */
-:root{
-  --ground:#E4E7E3; --ink:#1B2124; --quiet:#687174; --hair:#C3C9C5; --well:#D7DCD8;
-  --light:#FFD9A8;               /* replaced live by the house's colour temperature */
-  --step:clamp(15px,1.05vw + 11px,17px);
-  --s-1:calc(var(--step)*.8125); --s0:var(--step); --s1:calc(var(--step)*1.3125); --s3:calc(var(--step)*2.25); --s5:clamp(34px,5.4vw,64px);
-  --gut:clamp(16px,4vw,48px);
-}
-:root[data-sky="night"]{--ground:#0E151C; --ink:#D5DCE0; --quiet:#7B8790; --hair:#233039; --well:#141E27}
-*{box-sizing:border-box}
-html{background:var(--ground);color:var(--ink);-webkit-text-size-adjust:100%}
-body{margin:0;font:400 var(--s0)/1.45 "Archivo",system-ui,sans-serif;font-stretch:100%;font-feature-settings:"tnum" 1,"case" 1;
-  padding:env(safe-area-inset-top) 0 calc(var(--gut)*2);transition:background-color 1.2s, color 1.2s}
-main{max-width:1180px;margin:0 auto;padding:clamp(18px,3vw,32px) var(--gut) 0}
-[hidden]{display:none!important}
+main{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(18px,3vw,32px) var(--gut) 0}
+body{padding:env(safe-area-inset-top) 0 calc(var(--gut)*2)}
 
 /* Top bar: the shared app bar, with this app's views as tabs */
-app-bar{padding:0 var(--gut)}
-.tabs{display:flex;gap:clamp(18px,3vw,30px);white-space:nowrap}
-.tabs button{appearance:none;border:0;background:none;padding:15px 0 13px;cursor:pointer;font-size:var(--s0);font-weight:440;font-stretch:90%;
-  color:var(--quiet);border-bottom:2px solid transparent;margin-bottom:-1px}
-.tabs button[aria-selected="true"]{color:var(--ink);font-weight:560;border-bottom-color:var(--ink)}
-.tabs button:hover{color:var(--ink)}
+
 button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 
@@ -108,20 +91,13 @@ ol.log.big time{font-size:var(--s0)}
 .dev .n small{color:var(--quiet);font-stretch:82%;font-size:var(--s-1);margin-left:.5em}
 .dev .tg{grid-area:t}
 .dev input{grid-area:s}
-.tg{appearance:none;border:1px solid var(--hair);background:none;border-radius:999px;cursor:pointer;padding:.18em .75em .22em;font-size:var(--s-1);font-stretch:84%;color:var(--quiet);min-width:3.6em}
-.tg[aria-pressed="true"]{background:var(--light);border-color:var(--light);color:#1B2124}
 .dev.unav .n,.dev.unav .tg{opacity:.45}
-input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;margin:0;cursor:pointer;--v:0%}
-input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--ink) var(--v),var(--hair) var(--v))}
-input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--ink) var(--v),var(--hair) var(--v))}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--ground);border:1.5px solid var(--ink);margin-top:-6.5px}
-input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--ground);border:1.5px solid var(--ink)}
-input[type=range]:disabled{opacity:.35}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
-<app-bar app="house"><nav slot="tabs" class="tabs" role="tablist" aria-label="House">
+<app-bar app="house"><nav slot="tabs" class="app-tabs" role="tablist" aria-label="House">
   <button role="tab" data-v="now" aria-selected="true">Now</button>
   <button role="tab" data-v="devices" aria-selected="false">Devices</button>
   <button role="tab" data-v="activity" aria-selected="false">Activity</button>
@@ -258,6 +234,7 @@ function hero(eff, si, nowI){
 function render(){
   const s = S, d = s.circadian;
   document.documentElement.dataset.sky = s.sun.up ? "day" : "night";
+  if (d) try{ localStorage.setItem("house-sun", JSON.stringify({rise:d.sunrise, set:d.sunset})); }catch(e){}
   const now = new Date(s.now);
   const date = new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric"}).format(now);
   const wx = s.weather ? `<span><b>${Math.round(s.weather.temperature)}${esc(s.weather.unit||"°")}</b> ${esc(({rainy:"rain",pouring:"heavy rain",cloudy:"cloudy",partlycloudy:"partly cloudy",sunny:"sun","clear-night":"clear",snowy:"snow",fog:"fog",windy:"wind",lightning:"storms","lightning-rainy":"storms"})[s.weather.state]||s.weather.state)}</span>` : "";
@@ -329,7 +306,7 @@ function renderDevices(){
           const on = i.state==="on", un = i.state==="unavailable", v = on ? (i.brightness ?? 100) : 0;
           const nm = esc(i.name.toLowerCase().startsWith(a.name.toLowerCase()+" ") ? i.name.slice(a.name.length+1) : i.name);
           return `<div class="dev${un?" unav":""}"><span class="n">${nm}${on&&i.brightness!=null?`<small>${i.brightness}%</small>`:""}${un?"<small>Offline</small>":""}</span>`+
-            `<button class="tg" data-d="${esc(i.entity)}" aria-pressed="${on}" aria-label="${esc(i.name)} ${on?"on":"off"}" ${un?"disabled":""}>${on?"On":"Off"}</button>`+
+            `<button class="pill tg" data-d="${esc(i.entity)}" aria-pressed="${on}" aria-label="${esc(i.name)} ${on?"on":"off"}" ${un?"disabled":""}>${on?"On":"Off"}</button>`+
             (i.dimmable && on ? `<input type="range" min="1" max="100" value="${v||1}" style="--v:${v}%" data-l="${esc(i.entity)}" aria-label="${esc(i.name)} brightness" ${un?"disabled":""}>` : "")+`</div>`;
         }).join("")}</div>`).join("")}</div></section>`;
   }).join("");
@@ -344,7 +321,7 @@ document.addEventListener("change",e=>{
 let view = "now";
 function show(v){
   view = v;
-  document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.v===v));
+  document.querySelectorAll(".app-tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.v===v));
   ["now","devices","activity"].forEach(x=>$("v-"+x).hidden = x!==v);
   try{ sessionStorage.setItem("house-view", v); }catch(e){}
   if (v==="devices") loadDevices();
@@ -380,7 +357,7 @@ async function act(body, el, after){
 }
 function refresh(){ load(); if (view==="devices") loadDevices(); }
 document.addEventListener("click",e=>{
-  const tab = e.target.closest(".tabs button, [data-go]");
+  const tab = e.target.closest(".app-tabs button, [data-go]");
   if (tab){ show(tab.dataset.v || tab.dataset.go); return; }
   const d = e.target.closest(".tg");
   if (d){ d.setAttribute("aria-pressed", d.getAttribute("aria-pressed")!=="true"); act({entity:d.dataset.d, op: d.getAttribute("aria-pressed")==="true"?"on":"off"}, d, loadDevices); return; }

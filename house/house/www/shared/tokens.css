@@ -1,0 +1,80 @@
+/* House design tokens: one source for every app with a page (House, Frame).
+ * Edit here, run tools/sync-shared. Day and night follow the sun: House records the sky,
+ * appnav.js applies it to every app (falls back to the phone's light/dark setting).
+ *
+ * Colour      ground  page          ink    text        quiet  secondary text
+ *             hair    hairlines     well   wells, inputs, night bands
+ *             light   the house's light colour, live (only for "on")
+ * Type        Archivo, one family; width carries the hierarchy (wide numerals, narrow labels)
+ */
+:root{
+  --ground:#E4E7E3; --ink:#1B2124; --quiet:#687174; --hair:#C3C9C5; --well:#D7DCD8; --alert:#B4483C;
+  --light:#FFD9A8;
+  --on-light:#1B2124;
+  --step:clamp(15px,1.05vw + 11px,17px);
+  --s-1:calc(var(--step)*.8125); --s0:var(--step); --s1:calc(var(--step)*1.3125); --s3:calc(var(--step)*2.25); --s5:clamp(34px,5.4vw,64px);
+  --gut:clamp(16px,4vw,48px);
+  --maxw:1180px;   /* content width; the app bar lines up with it */
+  --face:"Archivo",system-ui,-apple-system,sans-serif;
+  --r-s:3px; --r-pill:999px;
+  color-scheme:light;
+}
+:root[data-sky="night"]{--ground:#0E151C; --ink:#D5DCE0; --quiet:#7B8790; --hair:#233039; --well:#141E27; --alert:#E38B7E; color-scheme:dark}
+@media (prefers-color-scheme:dark){:root:not([data-sky]){--ground:#0E151C; --ink:#D5DCE0; --quiet:#7B8790; --hair:#233039; --well:#141E27; --alert:#E38B7E; color-scheme:dark}}
+
+*{box-sizing:border-box}
+html{background:var(--ground);color:var(--ink);-webkit-text-size-adjust:100%}
+body{margin:0;font:400 var(--s0)/1.45 var(--face);font-stretch:100%;font-feature-settings:"tnum" 1,"case" 1;
+  background:var(--ground);color:var(--ink);transition:background-color 1.2s,color 1.2s}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+[hidden]{display:none!important}
+
+/* Display: light, wide. Section heads: semibold, narrow. */
+.t-display{font-size:var(--s3);font-weight:300;font-stretch:104%;letter-spacing:-.02em;line-height:1.05}
+.t-head{font-size:var(--s0);font-weight:600;font-stretch:88%;letter-spacing:-.005em}
+.t-quiet{color:var(--quiet);font-stretch:86%;font-size:var(--s-1)}
+
+/* App tabs, in the shared bar */
+.app-tabs{display:flex;gap:clamp(18px,3vw,30px);white-space:nowrap}
+.app-tabs button,.app-tabs span{appearance:none;border:0;background:none;padding:15px 0 13px;cursor:pointer;font-size:var(--s0);font-weight:440;
+  font-stretch:90%;color:var(--quiet);border-bottom:2px solid transparent;margin-bottom:-1px;display:inline-block}
+.app-tabs [aria-selected="true"]{color:var(--ink);font-weight:560;border-bottom-color:var(--ink)}
+.app-tabs button:hover{color:var(--ink)}
+app-bar{padding:0 max(var(--gut),calc((100% - var(--maxw))/2))}
+
+/* Buttons: ink for the main action, hairline for the rest, the live light for "on". */
+.btn{appearance:none;border:1px solid var(--ink);background:var(--ink);color:var(--ground);border-radius:var(--r-pill);
+  padding:.55em 1.2em .6em;font-weight:540;font-stretch:92%;cursor:pointer;transition:opacity .2s}
+.btn.ghost{background:none;color:var(--ink);border-color:var(--hair)}
+.btn.ghost:hover{border-color:var(--ink)}
+.btn.danger{background:var(--alert);border-color:var(--alert);color:var(--ground)}
+.btn.small{padding:.38em .95em .42em;font-size:var(--s-1)}
+.btn:disabled{opacity:.45;cursor:default}
+
+/* Form controls */
+select,input[type=text],input[type=time]{font:inherit;font-stretch:92%;color:var(--ink);background:var(--well);
+  border:1px solid transparent;border-radius:var(--r-s);padding:.45em .6em;width:100%}
+select:hover,input[type=text]:hover,input[type=time]:hover{border-color:var(--hair)}
+input[type=checkbox]{accent-color:var(--ink);width:16px;height:16px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;margin:0;cursor:pointer;--v:50%}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:linear-gradient(90deg,var(--ink) var(--v),var(--hair) var(--v))}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:var(--hair)}
+input[type=range]::-moz-range-progress{height:3px;border-radius:2px;background:var(--ink)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--ground);border:1.5px solid var(--ink);margin-top:-6.5px}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--ground);border:1.5px solid var(--ink)}
+input[type=range]:disabled{opacity:.35}
+
+/* On/off: a pill that fills with the house's light when on */
+.pill{appearance:none;border:1px solid var(--hair);background:none;border-radius:var(--r-pill);cursor:pointer;
+  padding:.18em .75em .22em;font-size:var(--s-1);font-stretch:84%;color:var(--quiet);min-width:3.6em}
+.pill[aria-pressed="true"],.pill[aria-checked="true"]{background:var(--light);border-color:var(--light);color:var(--on-light)}
+
+/* Dialogs and toasts */
+dialog.sheet-d{border:0;border-radius:6px;background:var(--ground);color:var(--ink);padding:24px;max-width:380px;
+  box-shadow:0 1px 0 var(--hair),0 18px 48px -12px rgba(0,0,0,.35)}
+dialog.sheet-d::backdrop{background:color-mix(in srgb,var(--ink) 28%,transparent)}
+.toast-s{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);
+  background:var(--ink);color:var(--ground);padding:.6em 1.1em;border-radius:var(--r-s);font-stretch:92%;
+  opacity:0;transition:opacity .25s,transform .25s;z-index:40;max-width:calc(100vw - 32px)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
