@@ -13,9 +13,9 @@ from astral import LocationInfo
 from astral.sun import sun as astral_sun
 
 from engine import (KEEP_OFF, OFF, ON, SHUT, Overrides, Schedule, daylight_zones_from_options,
-                    keyframes_from_options, pct_to_255)
+                    keyframes_from_options, pct_to_255, resolve)
 
-APP_VERSION = "0.3.2"
+APP_VERSION = "0.4.0"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -130,6 +130,15 @@ class Circadian:
         self.zone_of = {e: z for z in self.zones for e in z.lights}
         self.daylight_off: set[str] = set()          # lights we turned off for daylight
         self.daylight_keep: dict[str, object] = {}   # light -> day someone turned it on in daylight
+        # Boost: a person switches it on for a dark day. Listed lights ride the same curve,
+        # multiplied; colour stays on the schedule. It eases out from sunset (or from when it
+        # was switched on, if later) to the next keyframe, then switches itself off.
+        self.boost_entity = opts.get("boost_entity") or "input_boolean.circadian_boost"
+        self.boost: set[str] = set(opts.get("boost", []) or [])
+        self.boost_factor = float(opts.get("boost_factor", 1.5))
+        self.boost_since: datetime | None = None
+        self.boost_lit: set[str] = set()             # lights boost turned on
+        self._boost_done = False                     # boost ended by itself
 
     # -------------------------------------------------- setup
     async def start(self):
@@ -168,6 +177,9 @@ class Circadian:
         for z in self.zones:
             log.info("Daylight zone %s: %s, off above %g lx, on below %g lx, %d lights",
                      z.name, z.sensor, z.off_above, z.on_below, len(z.lights))
+        if self.boost:
+            log.info("Boost: %d lights, switch %s (%s)", len(self.boost), self.boost_entity,
+                     (self.states.get(self.boost_entity) or {}).get("state", "missing"))
         today = datetime.now(self.tz).date()
         for t, k in self.schedule.wake_events(today):
             log.info("Today's wake: %s at %s", k.name, t.strftime("%H:%M"))
@@ -226,6 +238,110 @@ class Circadian:
         else:
             log.info("Wake requested after %s: running the morning wake now", self.morning_reset)
         self.force_wake = True
+
+    def boosting(self) -> bool:
+        return bool(self.boost) and (self.states.get(self.boost_entity) or {}).get("state") == "on"
+
+    def boost_window(self, now: datetime):
+        """(fade start, fade end) for the current boost."""
+        since = self.boost_since or now
+        start = max(self.schedule.sun(since.date())[1], since)
+        times = sorted(t for off in (0, 1) for k in self.schedule.keyframes
+                       if (t := resolve(k.at, start.date() + timedelta(days=off),
+                                        self.schedule.sun, self.tz)) > start)
+        return start, (times[0] if times else start + timedelta(hours=2))
+
+    def boost_mult(self, now: datetime) -> float:
+        if not self.boosting():
+            return 1.0
+        start, end = self.boost_window(now)
+        if now <= start:
+            return self.boost_factor
+        if now >= end:
+            return 1.0
+        f = (now - start) / (end - start)
+        return self.boost_factor + (1.0 - self.boost_factor) * f
+
+    def want(self, e: str, now: datetime):
+        """(brightness %, kelvin) this light should be at now, boost included; None if unmanaged."""
+        tgt = self.schedule.target_at(e, now)
+        if tgt is None or tgt.kind != "level":
+            return None
+        b = tgt.brightness
+        if e in self.boost:
+            b = min(100.0, b * self.boost_mult(now))
+        return b, tgt.kelvin
+
+    def _data(self, e: str, pct: float, kelvin, transition) -> dict:
+        data = {"brightness_pct": max(1, min(100, round(pct))), "transition": transition}
+        attrs = (self.states.get(e) or {}).get("attributes", {})
+        if kelvin and "color_temp" in (attrs.get("supported_color_modes") or []):
+            lo = attrs.get("min_color_temp_kelvin") or 2000
+            hi = attrs.get("max_color_temp_kelvin") or 6500
+            data["color_temp_kelvin"] = max(lo, min(hi, kelvin))
+        return data
+
+    def on_boost(self, on: bool):
+        if on:
+            self.boost_since = self.now()
+            self._boost_done = False
+            s, e = self.boost_window(self.now())
+            log.info("Boost on (x%g), easing out %s-%s", self.boost_factor,
+                     s.strftime("%H:%M"), e.strftime("%H:%M"))
+        else:
+            log.info("Boost off%s", " (eased out)" if self._boost_done else "")
+        asyncio.get_running_loop().create_task(self.boost_start() if on else self.boost_end())
+
+    async def boost_expire(self):
+        if self.boosting() and self.now() >= self.boost_window(self.now())[1]:
+            self._boost_done = True
+            log.info("Boost eased out, switching it off")
+            await self.call("input_boolean", "turn_off", self.boost_entity)
+
+    async def boost_start(self):
+        if not self.enabled():
+            return
+        now = self.now()
+        for e in sorted(self.boost):
+            st = (self.states.get(e) or {}).get("state")
+            t = self.ov.track(e)
+            if t.held:   # asking for more light overrides an earlier manual level
+                t.held, t.held_reason = False, ""
+            self.daylight_off.discard(e)
+            try:
+                if st == "on":
+                    await self.apply(e, transition=3, why="boost")
+                elif st == "off":
+                    w = self.want(e, self.vnow())
+                    if w is None or t.user_off_day == now.date():
+                        continue
+                    data = self._data(e, w[0], w[1], 3)
+                    self.ov.note_command(e, None, now, 0, w[0], data.get("color_temp_kelvin"), 3)
+                    ctx = await self.call("light", "turn_on", e, data)
+                    if ctx:
+                        self.ov.our_contexts[ctx] = now
+                    self.boost_lit.add(e)
+                    log.info("Boost: %s on at %s%%", e, data["brightness_pct"])
+            except Exception as ex:
+                log.warning("Boost: %s failed: %s", e, ex)
+
+    async def boost_end(self):
+        lit, self.boost_lit = self.boost_lit, set()
+        natural, self._boost_done = self._boost_done, False
+        self.boost_since = None
+        if not self.enabled() or natural:   # eased out: lights are already on the curve
+            return
+        for e in sorted(self.boost):
+            if (self.states.get(e) or {}).get("state") != "on" or self.ov.track(e).held:
+                continue
+            try:
+                if e in lit:
+                    log.info("Boost off: %s off again", e)
+                    await self.call("light", "turn_off", e, {"transition": 5})
+                else:
+                    await self.apply(e, transition=5, why="boost off")
+            except Exception as ex:
+                log.warning("Boost off: %s failed: %s", e, ex)
 
     def enabled(self) -> bool:
         st = self.states.get(self.enable_entity)
@@ -329,6 +445,13 @@ class Circadian:
             self.states.pop(e, None)
             return
         self.states[e] = new
+        if e == self.boost_entity and self.boost:
+            was, now_on = (old or {}).get("state") == "on", new.get("state") == "on"
+            if was != now_on:
+                self.on_boost(now_on)
+            return
+        if e in self.boost_lit and new.get("state") != "on":
+            self.boost_lit.discard(e)
         for z in self.zones:
             if z.sensor == e:
                 z.update(new.get("state"), self.now())
@@ -386,28 +509,23 @@ class Circadian:
         t = self.ov.track(e)
         if t.held:
             return
-        tgt = self.schedule.target_at(e, self.vnow())
-        if tgt is None or tgt.kind != "level":
+        w = self.want(e, self.vnow())
+        if w is None:
             return
         attrs = st.get("attributes", {})
         cur_b = attrs.get("brightness")
         cur_k = attrs.get("color_temp_kelvin")
-        data = {"brightness_pct": max(1, min(100, round(tgt.brightness))), "transition": transition}
-        k = None
-        if tgt.kelvin and "color_temp" in (attrs.get("supported_color_modes") or []):
-            lo = attrs.get("min_color_temp_kelvin") or 2000
-            hi = attrs.get("max_color_temp_kelvin") or 6500
-            k = max(lo, min(hi, tgt.kelvin))
-            data["color_temp_kelvin"] = k
+        data = self._data(e, w[0], w[1], transition)
+        k = data.get("color_temp_kelvin")
         if why == "tick" and cur_b is not None:
-            same_b = abs(cur_b - pct_to_255(tgt.brightness)) < pct_to_255(MIN_STEP_PCT)
+            same_b = abs(cur_b - pct_to_255(w[0])) < pct_to_255(MIN_STEP_PCT)
             same_k = k is None or (cur_k is not None and abs(cur_k - k) < MIN_STEP_K)
             if same_b and same_k:
                 return
         # re-check right before sending (lesson: never turn a light back on)
         if (self.states.get(e) or {}).get("state") != "on":
             return
-        self.ov.note_command(e, None, self.now(), cur_b, tgt.brightness, k, transition, cur_k)
+        self.ov.note_command(e, None, self.now(), cur_b, w[0], k, transition, cur_k)
         ctx = await self.call("light", "turn_on", e, data)
         if ctx:
             self.ov.our_contexts[ctx] = self.now()
@@ -429,6 +547,7 @@ class Circadian:
             except Exception as ex:
                 log.warning("%s: update failed: %s", e, ex)
         await self.daylight_step()
+        await self.boost_expire()
 
     async def daylight_step(self):
         if not self.zones or not self.enabled():
@@ -444,6 +563,8 @@ class Circadian:
             for e in sorted(z.lights):
                 st = (self.states.get(e) or {}).get("state")
                 tgt = self.schedule.target_at(e, self.vnow())
+                if bright and self.boosting() and e in self.boost:
+                    continue   # boost asked for light; daylight doesn't take it away
                 if bright:
                     # level: on the curve; OFF: lit but unmanaged now (e.g. balcony filaments
                     # after the morning) - it can go off, but only comes back if it has a level
@@ -467,13 +588,9 @@ class Circadian:
                         log.warning("%s: daylight on failed: %s", e, ex)
 
     async def _turn_on_at(self, e, tgt, transition, now):
-        data = {"brightness_pct": max(1, min(100, round(tgt.brightness))), "transition": transition}
-        attrs = (self.states.get(e) or {}).get("attributes", {})
-        if tgt.kelvin and "color_temp" in (attrs.get("supported_color_modes") or []):
-            lo = attrs.get("min_color_temp_kelvin") or 2000
-            hi = attrs.get("max_color_temp_kelvin") or 6500
-            data["color_temp_kelvin"] = max(lo, min(hi, tgt.kelvin))
-        self.ov.note_command(e, None, now, 0, tgt.brightness, data.get("color_temp_kelvin"), transition)
+        w = self.want(e, self.vnow()) or (tgt.brightness, tgt.kelvin)
+        data = self._data(e, w[0], w[1], transition)
+        self.ov.note_command(e, None, now, 0, w[0], data.get("color_temp_kelvin"), transition)
         ctx = await self.call("light", "turn_on", e, data)
         if ctx:
             self.ov.our_contexts[ctx] = now
@@ -529,14 +646,10 @@ class Circadian:
                         log.info("Wake %s: turning on %s", k.name, target)
                         ctx = await self.call(dom, "turn_on", target, None)
                     else:
-                        data = {"brightness_pct": max(1, min(100, round(tgt.brightness))), "transition": 3}
-                        attrs = (self.states.get(e) or {}).get("attributes", {})
-                        if tgt.kelvin and "color_temp" in (attrs.get("supported_color_modes") or []):
-                            lo = attrs.get("min_color_temp_kelvin") or 2000
-                            hi = attrs.get("max_color_temp_kelvin") or 6500
-                            data["color_temp_kelvin"] = max(lo, min(hi, tgt.kelvin))
+                        b = tgt.brightness * (self.boost_mult(now) if e in self.boost else 1)
+                        data = self._data(e, b, tgt.kelvin, 3)
                         log.info("Wake %s: %s -> %s%%", k.name, e, data["brightness_pct"])
-                        self.ov.note_command(e, None, now, 0, tgt.brightness,
+                        self.ov.note_command(e, None, now, 0, b,
                                              data.get("color_temp_kelvin"), 3)
                         ctx = await self.call("light", "turn_on", e, data)
                     if ctx:
@@ -567,6 +680,8 @@ class Circadian:
             "user_off": {e: t.user_off_day.isoformat() for e, t in tr.items() if t.user_off_day},
             "daylight_off": sorted(self.daylight_off),
             "daylight_keep": {e: d.isoformat() for e, d in self.daylight_keep.items()},
+            "boost_lit": sorted(self.boost_lit),
+            "boost_since": self.boost_since.isoformat() if self.boost_since else None,
         }
 
     def save_state(self):
@@ -610,6 +725,11 @@ class Circadian:
         for e, d in data.get("daylight_keep", {}).items():
             if d == today.isoformat():
                 self.daylight_keep[e] = today
+        self.boost_lit = set(data.get("boost_lit", [])) & self.boost
+        if data.get("boost_since") and self.boosting():
+            self.boost_since = datetime.fromisoformat(data["boost_since"])
+        elif self.boosting():
+            self.boost_since = now
         n = sum(1 for t in self.ov.tracks.values() if t.held)
         if n:
             log.info("Restored %d held light(s) from before the restart", n)
