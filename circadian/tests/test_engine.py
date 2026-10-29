@@ -200,3 +200,55 @@ def test_restart_grace():
     ov.grace_until = now + timedelta(minutes=3)
     assert ov.on_state("light.f", "on", "on", {"brightness": 30}, "bridge", now, None) == "none"
     assert ov.on_state("light.f", "on", "on", {"brightness": 30}, "bridge", now + timedelta(minutes=4), None) == "held"
+
+
+# ---------------------------------------------------------------- daylight
+
+from engine import daylight_zones_from_options  # noqa: E402
+
+
+def _zone():
+    return daylight_zones_from_options([{"name": "k", "sensor": "sensor.lux", "off_above": 250,
+                                         "on_below": 160, "off_after_minutes": 10,
+                                         "on_after_minutes": 3, "lights": ["light.cab"]}])[0]
+
+
+def test_daylight_needs_sustained_brightness():
+    z = _zone()
+    t = at(9, 0)
+    z.update("300", t)
+    assert not z.evaluate(t + timedelta(minutes=9))
+    assert z.evaluate(t + timedelta(minutes=10))
+
+
+def test_daylight_dip_resets_clock_and_hysteresis_holds():
+    z = _zone()
+    t = at(9, 0)
+    z.update(300, t)
+    z.update(240, t + timedelta(minutes=5))      # dip below off_above restarts the clock
+    z.update(300, t + timedelta(minutes=6))
+    assert not z.evaluate(t + timedelta(minutes=12))
+    assert z.evaluate(t + timedelta(minutes=16))
+    z.update(200, t + timedelta(minutes=20))     # between thresholds: stays bright
+    assert z.evaluate(t + timedelta(minutes=40))
+    z.update(150, t + timedelta(minutes=41))
+    assert z.evaluate(t + timedelta(minutes=43))
+    assert not z.evaluate(t + timedelta(minutes=44))
+
+
+def test_daylight_unavailable_sensor_means_dark():
+    z = _zone()
+    t = at(9, 0)
+    z.update(500, t)
+    assert z.evaluate(t + timedelta(minutes=11))
+    z.update("unavailable", t + timedelta(minutes=12))
+    assert not z.evaluate(t + timedelta(minutes=12))
+
+
+def test_daylight_zone_validation():
+    with pytest.raises(ValueError):
+        daylight_zones_from_options([{"sensor": "s", "off_above": 100, "on_below": 200, "lights": []}])
+    with pytest.raises(ValueError):
+        daylight_zones_from_options([
+            {"sensor": "a", "off_above": 200, "on_below": 100, "lights": ["light.x"]},
+            {"sensor": "b", "off_above": 200, "on_below": 100, "lights": ["light.x"]}])

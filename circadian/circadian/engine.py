@@ -302,3 +302,72 @@ class Overrides:
     def release_all(self):
         for t in self.tracks.values():
             t.held, t.held_reason = False, ""
+
+
+# ---------------------------------------------------------------- daylight
+
+@dataclass
+class DaylightZone:
+    """Turns lights off when a light sensor says daylight is enough, and back on when it isn't.
+
+    Hysteresis keeps passing clouds from flicking lights: the reading has to stay at or above
+    `off_above` for `off_after` before lights go off, and at or below `on_below` for `on_after`
+    before they come back. A missing or unreadable sensor counts as dark, so lights stay on."""
+    name: str
+    sensor: str
+    off_above: float
+    on_below: float
+    off_after: timedelta
+    on_after: timedelta
+    lights: frozenset
+    bright: bool = False
+    lux: float | None = None
+    above_since: datetime | None = None
+    below_since: datetime | None = None
+
+    def update(self, value, now: datetime):
+        try:
+            lux = float(value)
+        except (TypeError, ValueError):
+            lux = None
+        self.lux = lux
+        if lux is None:
+            self.above_since = None
+            self.below_since = self.below_since or now
+            return
+        if lux >= self.off_above:
+            self.above_since = self.above_since or now
+        else:
+            self.above_since = None
+        if lux <= self.on_below:
+            self.below_since = self.below_since or now
+        else:
+            self.below_since = None
+
+    def evaluate(self, now: datetime) -> bool:
+        if self.lux is None:
+            self.bright = False
+        elif not self.bright and self.above_since and now - self.above_since >= self.off_after:
+            self.bright = True
+        elif self.bright and self.below_since and now - self.below_since >= self.on_after:
+            self.bright = False
+        return self.bright
+
+
+def daylight_zones_from_options(raw: list[dict] | None) -> list[DaylightZone]:
+    out, seen = [], set()
+    for z in raw or []:
+        lights = frozenset(z.get("lights", []))
+        dup = lights & seen
+        if dup:
+            raise ValueError(f"light(s) in more than one daylight zone: {', '.join(sorted(dup))}")
+        seen |= lights
+        if float(z["on_below"]) >= float(z["off_above"]):
+            raise ValueError(f"daylight zone {z.get('name')!r}: on_below must be lower than off_above")
+        out.append(DaylightZone(
+            name=z.get("name") or z["sensor"], sensor=z["sensor"],
+            off_above=float(z["off_above"]), on_below=float(z["on_below"]),
+            off_after=timedelta(minutes=float(z.get("off_after_minutes", 10))),
+            on_after=timedelta(minutes=float(z.get("on_after_minutes", 3))),
+            lights=lights))
+    return out
