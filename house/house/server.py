@@ -19,7 +19,7 @@ from aiohttp import web
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.10.1"
+VERSION = "0.10.2"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -225,12 +225,19 @@ class House:
         sun = by.get("sun.sun", {}).get("attributes", {})
         wx = by.get(self.opts.get("weather", "weather.forecast_home"), {})
         wa = wx.get("attributes", {})
+        al = by.get(self.opts.get("allergy", "sensor.allergy_index_today"), {})
+        pollen = None
+        if al.get("state") not in (None, "unknown", "unavailable"):
+            aa = al.get("attributes", {})
+            pollen = {"index": al["state"], "rating": aa.get("rating"),
+                      "top": [aa[k] for k in ("allergen_name_1", "allergen_name_2", "allergen_name_3") if aa.get(k)]}
         return {
             "now": datetime.now(timezone.utc).isoformat(),
             "weather": {"state": wx.get("state"), "temperature": wa.get("temperature"),
                         "unit": wa.get("temperature_unit"), "uv": wa.get("uv_index"),
                         "clouds": wa.get("cloud_coverage"), "humidity": wa.get("humidity"),
-                        "wind": wa.get("wind_speed"), "wind_unit": wa.get("wind_speed_unit")} if wx else None,
+                        "wind": wa.get("wind_speed"), "wind_unit": wa.get("wind_speed_unit"),
+                        "pollen": pollen} if wx else None,
             "sun": {"next_rising": sun.get("next_rising"), "next_setting": sun.get("next_setting"),
                     "elevation": sun.get("elevation"), "up": by.get("sun.sun", {}).get("state") == "above_horizon"},
             "circadian": day,
