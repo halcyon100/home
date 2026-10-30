@@ -102,6 +102,7 @@ function chart(hours, nowIdx){
     ${bars}
     <path d="${d}" fill="none" stroke="var(--ink)" stroke-width="3.5" stroke-linecap="round"/>
     ${lab(hiI,hours[hiI].t+"°",-22)}
+    ${hiI!==n-1?`<text x="${W}" y="${y(hours[n-1].t)-22}" text-anchor="end" font-size="30" font-weight="440" fill="var(--ink)" opacity=".55">${hours[n-1].t}°</text>`:""}
     <line x1="${nx}" x2="${nx}" y1="${ny}" y2="${H}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="2 6"/>
     <circle cx="${nx}" cy="${ny}" r="24" fill="var(--glow)" opacity=".35"/><circle cx="${nx}" cy="${ny}" r="10" fill="var(--ink)"/>
   </svg>`;

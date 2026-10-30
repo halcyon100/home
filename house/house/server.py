@@ -20,7 +20,7 @@ from board import Board, observed
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.11.7"
+VERSION = "0.11.8"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
