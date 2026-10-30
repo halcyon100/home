@@ -19,7 +19,7 @@ from aiohttp import web
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -224,10 +224,13 @@ class House:
                 row["name"] = by.get(row["entity"], {}).get("attributes", {}).get("friendly_name", row["entity"])
         sun = by.get("sun.sun", {}).get("attributes", {})
         wx = by.get(self.opts.get("weather", "weather.forecast_home"), {})
+        wa = wx.get("attributes", {})
         return {
             "now": datetime.now(timezone.utc).isoformat(),
-            "weather": {"state": wx.get("state"), "temperature": wx.get("attributes", {}).get("temperature"),
-                        "unit": wx.get("attributes", {}).get("temperature_unit")} if wx else None,
+            "weather": {"state": wx.get("state"), "temperature": wa.get("temperature"),
+                        "unit": wa.get("temperature_unit"), "uv": wa.get("uv_index"),
+                        "clouds": wa.get("cloud_coverage"), "humidity": wa.get("humidity"),
+                        "wind": wa.get("wind_speed"), "wind_unit": wa.get("wind_speed_unit")} if wx else None,
             "sun": {"next_rising": sun.get("next_rising"), "next_setting": sun.get("next_setting"),
                     "elevation": sun.get("elevation"), "up": by.get("sun.sun", {}).get("state") == "above_horizon"},
             "circadian": day,
