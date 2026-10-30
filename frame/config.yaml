@@ -1,5 +1,5 @@
 name: Frame
-version: "1.10.0"
+version: "1.10.1"
 slug: frame
 description: Keeps the Samsung Frame in Art Mode, hangs photos, plays collections and runs its brightness schedule.
 url: https://github.com/halcyon100/home/tree/main/frame
