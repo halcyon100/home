@@ -770,6 +770,8 @@ def api_status() -> dict:
 
 def api_library() -> dict:
     items = TVC.call(lambda a: a.available())
+    bid = board_id()
+    items = [i for i in items if i.get("content_id") != bid]
     LIB_CACHE["mine"] = list(dict.fromkeys(i["content_id"] for i in items
                                            if str(i.get("content_id", "")).upper().startswith("MY")))
     LIB_CACHE["t"] = time.time()
@@ -1111,7 +1113,7 @@ def my_photo_ids() -> list:
         LIB_CACHE["mine"] = list(dict.fromkeys(i["content_id"] for i in items
                                                if str(i.get("content_id", "")).upper().startswith("MY")))
         LIB_CACHE["t"] = time.time()
-    return LIB_CACHE["mine"]
+    return [i for i in LIB_CACHE["mine"] if i != board_id()]
 
 
 def player_loop() -> None:
@@ -1121,6 +1123,8 @@ def player_loop() -> None:
         p = STATE.get("playing")
         if not p or p.get("mode") != "app" or time.time() < p.get("next_at", 0):
             continue
+        if board_state().get("showing"):
+            continue  # the kitchen board has the screen
         try:
             if TVC.power() != "on":
                 continue
@@ -1150,6 +1154,116 @@ def player_loop() -> None:
             log.info("Now showing %s (%s)", nxt, label_for(p["target"]))
         except Exception as e:
             log.info("Player: couldn't change the picture (%s)", e)
+
+
+# ---------------------------------------------------------------- the kitchen board
+# The House app renders a morning board and stages it here ahead of time; when someone walks into
+# the kitchen it asks for it to be shown, and later for the art to come back. The board is never
+# part of your pictures: it's hidden from the library and the player, and taken off the TV when
+# it's put away, so the TV's own rotation can't pick it up.
+BOARD_LOCK = threading.Lock()
+
+
+def board_state() -> dict:
+    return dict(STATE.get("board") or {})
+
+
+def board_id() -> str:
+    return board_state().get("id") or ""
+
+
+def _board_drop(cid: str) -> None:
+    if cid and SAFE_ID.match(cid):
+        try:
+            oneshot(lambda a: a.delete_list([cid]), 15)
+        except Exception as e:
+            log.info("Board: couldn't remove %s from the TV (%s)", cid, e)
+
+
+def api_board_stage(jpeg: bytes) -> dict:
+    img = Image.open(io.BytesIO(jpeg))
+    if img.size != PORTRAIT or img.format != "JPEG":
+        jpeg = prepare(jpeg, 0.5, 0.5)
+    with BOARD_LOCK:
+        if TVC.power() != "on":
+            return {"ok": False, "reason": "The TV is off"}
+        b = board_state()
+        old = b.get("id")
+        cid = TVC.call(lambda a: a.upload(jpeg, file_type="JPEG", matte="none", portrait_matte="none"))
+        if not cid or not SAFE_ID.match(cid):
+            return {"ok": False, "reason": "The TV didn't take it"}
+        if b.get("showing"):
+            TVC.call(lambda a: a.select_image(cid, show=True))
+        b["id"], b["staged_at"] = cid, time.time()
+        STATE.set("board", b)
+        LIB_CACHE["t"] = 0
+    if old and old != cid:
+        _board_drop(old)
+    log.info("Board staged as %s (%d KB)%s", cid, len(jpeg) // 1024, ", on screen" if b.get("showing") else "")
+    return {"ok": True, "id": cid, "showing": bool(b.get("showing"))}
+
+
+def api_board_show() -> dict:
+    with BOARD_LOCK:
+        b = board_state()
+        cid = b.get("id")
+        if not cid:
+            return {"ok": False, "reason": "Nothing staged"}
+        if b.get("showing"):
+            return {"ok": True, "id": cid}
+        if TVC.power() != "on":
+            return {"ok": False, "reason": "The TV is off"}
+
+        def current(art):
+            return (art.get_current() or {}).get("content_id")
+
+        prev = TVC.call(current)
+        rot = read_rotation()
+        b["prev"] = prev if prev != cid else b.get("prev")
+        b["rotation"] = rot if rot and str(rot.get("value", "off")).lower() not in ("off", "0", "") else None
+        if b["rotation"]:
+            try:
+                set_rotation(0, rot.get("category") or MY_PHOTOS, True)
+            except Exception as e:
+                log.info("Board: couldn't pause the TV's rotation (%s)", e)
+
+        def go(art):
+            art.select_image(cid, show=True)
+            if not artmode_is_on(art.get_artmode()):
+                art.set_artmode(True)
+
+        TVC.call(go)
+        b["showing"], b["since"] = True, time.time()
+        STATE.set("board", b)
+    log.info("Board on screen (was %s)", b.get("prev"))
+    return {"ok": True, "id": cid}
+
+
+def api_board_hide() -> dict:
+    with BOARD_LOCK:
+        b = board_state()
+        cid, prev, rot = b.get("id"), b.get("prev"), b.get("rotation")
+        if b.get("showing") and TVC.power() == "on":
+            if prev and SAFE_ID.match(prev):
+                try:
+                    TVC.call(lambda a: a.select_image(prev, show=True))
+                except Exception as e:
+                    log.info("Board: couldn't bring back %s (%s)", prev, e)
+            if rot:
+                try:
+                    pl = STATE.get("playing") or {}
+                    if pl.get("mode") == "tv":   # what this app set up: put exactly that back
+                        set_rotation(int(pl["minutes"]), MY_PHOTOS if pl["target"] == "all" else "MY-C0004",
+                                     bool(pl.get("shuffle", True)))
+                    else:
+                        minutes = int("".join(ch for ch in str(rot.get("value")) if ch.isdigit()) or 0)
+                        set_rotation(minutes, rot.get("category") or MY_PHOTOS, rot.get("type") != "slideshow")
+                except Exception as e:
+                    log.info("Board: couldn't restore the TV's rotation (%s)", e)
+        STATE.set("board", {})
+    _board_drop(cid)
+    log.info("Board put away; back to %s", prev)
+    return {"ok": True, "back_to": prev}
 
 
 # ---------------------------------------------------------------- display (brightness etc.)
@@ -1523,6 +1637,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json({"error": "That file isn't an image this app can read. "
                                            "For iPhone HEIC photos, run: pip3 install pillow-heif"}, 400)
                 return self.send_json(api_upload(body, fx, fy, show, prepared, collection, recipe, replace))
+            if url.path == "/api/board/stage":
+                return self.send_json(api_board_stage(self.read_body(30 * 1024 * 1024)))
+            if url.path == "/api/board/show":
+                return self.send_json(api_board_show())
+            if url.path == "/api/board/hide":
+                return self.send_json(api_board_hide())
             if url.path == "/api/original":
                 try:
                     return self.send_json(save_original(q.get("id", [""])[0], self.read_body(40 * 1024 * 1024)))

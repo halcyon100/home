@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>Kitchen board</title>
+<style>
+@font-face{font-family:"Archivo";src:url("shared/archivo.woff2") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%}
+/* The Frame, on its side: 2160 × 3840, drawn at 1080 × 1920 and captured at 2× */
+:root{--ink:#F4F1EA;--quiet:rgb(244 241 234 / .68);--hair:rgb(244 241 234 / .28);--glow:rgb(255 226 170 / .9)}
+[data-ink="dark"]{--ink:#15191C;--quiet:rgb(21 25 28 / .62);--hair:rgb(21 25 28 / .22);--glow:rgb(30 36 40 / .5)}
+html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#0E151C}
+body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-settings:"tnum" 1,"case" 1;-webkit-font-smoothing:antialiased}
+.sky{position:absolute;inset:0;background-size:cover;background-position:center}
+.veil{position:absolute;inset:0}
+/* A blur that rises from the bottom and tapers out mid-screen: stacked layers, each blurrier and lower */
+.frost{position:absolute;left:0;right:0;bottom:0;height:62%;pointer-events:none}
+.frost i{position:absolute;inset:0}
+.frost i:nth-child(1){backdrop-filter:blur(6px);-webkit-mask-image:linear-gradient(180deg,transparent 0%,#000 22%);mask-image:linear-gradient(180deg,transparent 0%,#000 22%)}
+.frost i:nth-child(2){backdrop-filter:blur(16px);-webkit-mask-image:linear-gradient(180deg,transparent 14%,#000 40%);mask-image:linear-gradient(180deg,transparent 14%,#000 40%)}
+.frost i:nth-child(3){backdrop-filter:blur(34px) saturate(1.08);-webkit-mask-image:linear-gradient(180deg,transparent 30%,#000 60%);mask-image:linear-gradient(180deg,transparent 30%,#000 60%)}
+.frost i:nth-child(4){background:linear-gradient(180deg,transparent 10%,var(--tint) 70%)}
+:root{--tint:rgb(10 16 22 / .30)}
+[data-ink="dark"]{--tint:rgb(244 245 246 / .38)}
+.page{position:absolute;inset:0;padding:96px 88px 84px;display:flex;flex-direction:column}
+
+/* Masthead */
+.mast{display:flex;justify-content:space-between;align-items:baseline;font-size:34px;font-stretch:88%;letter-spacing:.005em}
+.mast b{font-weight:560}
+.mast span{color:var(--quiet)}
+
+/* Now: the number and the sentence */
+.now{margin-top:52px;display:flex;align-items:flex-start;gap:34px}
+.temp{font-size:300px;line-height:.8;font-weight:200;font-stretch:104%;letter-spacing:-.055em;margin-left:-14px}
+.temp sup{font-size:.42em;vertical-align:.95em;margin-left:.02em;font-weight:250}
+.hl{margin-top:22px;display:grid;gap:10px;font-size:34px;font-stretch:90%}
+.hl span{display:flex;gap:16px;align-items:baseline}
+.hl i{font-style:normal;color:var(--quiet);font-size:26px;font-stretch:84%;width:1em}
+.say{margin:44px 0 0;font-size:80px;line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.028em;max-width:12.5ch}
+
+/* Notable: only what's worth saying, with when */
+.notes{list-style:none;margin:44px 0 0;padding:0;display:grid;gap:18px;font-size:36px;line-height:1.2;font-stretch:92%}
+.notes li{display:grid;grid-template-columns:30px 1fr;gap:18px;align-items:baseline}
+.notes li::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--ink);transform:translateY(-6px)}
+.notes b{font-weight:560}
+.notes span{color:var(--quiet)}
+
+/* Today, hour by hour */
+.today{margin-top:auto;padding-top:48px}
+.today h2,.days h2{margin:0 0 18px;font-size:26px;font-weight:560;font-stretch:84%;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet)}
+.today svg{display:block;width:100%;height:210px;overflow:visible}
+.axis{position:relative;height:30px;font-size:24px;font-stretch:80%;color:var(--quiet);margin-top:12px}
+.axis span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
+.axis span:first-child{transform:none}
+
+/* Three days */
+.days{margin-top:52px}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);border-top:1.5px solid var(--hair)}
+.col{padding:24px 0 0}
+.col + .col{padding-left:34px;border-left:1.5px solid var(--hair)}
+.col h3{margin:0;font-size:34px;font-weight:560;font-stretch:90%}
+.col img{width:96px;height:96px;margin:6px 0 0 -14px;display:block}
+.col .t{font-size:56px;font-weight:300;font-stretch:100%;letter-spacing:-.03em;line-height:1}
+.col .t span{color:var(--quiet);font-size:40px;margin-left:.25em}
+.col p{margin:14px 0 0;font-size:28px;line-height:1.3;font-stretch:88%;color:var(--quiet);max-width:12em}
+.col p b{color:var(--ink);font-weight:520}
+
+/* The house, in one quiet line */
+.house{margin-top:44px;padding-top:24px;border-top:1.5px solid var(--hair);display:flex;flex-wrap:wrap;gap:12px 40px;font-size:30px;font-stretch:88%;color:var(--quiet)}
+.house b{color:var(--ink);font-weight:520}
+</style>
+</head>
+<body>
+<div class="sky" id="sky"></div><div class="veil" id="veil"></div><div class="frost"><i></i><i></i><i></i><i></i></div>
+<main class="page" id="page"></main>
+<script>
+"use strict";
+/* How each sky is graded for type: which ink, and a veil to calm the busy parts */
+const SKY = {
+  clear:    {ink:"light", veil:"linear-gradient(180deg,rgb(8 24 52 / .10),rgb(8 24 52 / .05) 40%,rgb(8 24 52 / .45))"},
+  partly:   {ink:"light", veil:"linear-gradient(180deg,rgb(10 28 58 / .38),rgb(10 28 58 / .22) 45%,rgb(10 28 58 / .62))"},
+  overcast: {ink:"dark",  veil:"linear-gradient(180deg,rgb(236 238 242 / .30),rgb(236 238 242 / .10) 50%,rgb(236 238 242 / .40))"},
+  rain:     {ink:"dark",  veil:"linear-gradient(180deg,rgb(232 236 240 / .62),rgb(232 236 240 / .55) 45%,rgb(232 236 240 / .78))"},
+  storm:    {ink:"light", veil:"linear-gradient(180deg,rgb(8 14 18 / .15),rgb(8 14 18 / 0) 40%,rgb(8 14 18 / .55))"},
+  snow:     {ink:"dark",  veil:"linear-gradient(180deg,rgb(240 241 242 / .25),rgb(240 241 242 / .30) 50%,rgb(240 241 242 / .72))"},
+  fog:      {ink:"dark",  veil:"linear-gradient(180deg,rgb(238 238 236 / .20),rgb(238 238 236 / .25) 45%,rgb(238 238 236 / .82))"},
+};
+const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function chart(hours, nowIdx){
+  // hours: [{h:"6a", t:48, p:44}] — temperature as a line, chance of rain as soft bars
+  const W=904, H=210, n=hours.length, x=i=>i/(n-1)*W;
+  const ts=hours.map(h=>h.t), lo=Math.min(...ts)-2, hi=Math.max(...ts)+2, y=t=>40+(1-(t-lo)/(hi-lo))*(H-120);
+  const pts=hours.map((h,i)=>[x(i),y(h.t)]);
+  let d=`M${pts[0][0]} ${pts[0][1]}`;
+  for(let i=1;i<n;i++){ const [x0,y0]=pts[i-1],[x1,y1]=pts[i],cx=(x0+x1)/2; d+=` C${cx} ${y0} ${cx} ${y1} ${x1} ${y1}`; }
+  const bw=W/n*.56;
+  const bars=hours.map((h,i)=>h.p>=10?`<rect x="${(x(i)-bw/2).toFixed(1)}" y="${(H-h.p/100*64).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h.p/100*64).toFixed(1)}" rx="3" fill="var(--ink)" opacity="${(.18+h.p/100*.5).toFixed(2)}"/>`:"").join("");
+  const hiI=ts.indexOf(Math.max(...ts)), lab=(i,txt,dy)=>`<text x="${x(i)}" y="${y(hours[i].t)+dy}" text-anchor="middle" font-size="30" font-weight="520" fill="var(--ink)">${txt}</text>`;
+  const [nx,ny]=pts[nowIdx];
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    ${bars}
+    <path d="${d}" fill="none" stroke="var(--ink)" stroke-width="3.5" stroke-linecap="round"/>
+    ${lab(hiI,hours[hiI].t+"°",-22)}
+    <line x1="${nx}" x2="${nx}" y1="${ny}" y2="${H}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="2 6"/>
+    <circle cx="${nx}" cy="${ny}" r="24" fill="var(--glow)" opacity=".35"/><circle cx="${nx}" cy="${ny}" r="10" fill="var(--ink)"/>
+  </svg>`;
+}
+
+function render(B){
+  const s = SKY[B.sky] || SKY.overcast;
+  document.documentElement.dataset.ink = s.ink;
+  document.getElementById("sky").style.backgroundImage = `url("${B.image}")`;
+  document.getElementById("veil").style.background = s.veil;
+  const n = B.hours.length, step = n > 12 ? 3 : 2;
+  const axis = B.hours.map((h,i)=>i%step===0 && (n-1-i >= step/2 || i===0) ? `<span style="left:${(i/(n-1)*100).toFixed(2)}%">${esc(h.h)}</span>` : "").join("");
+  document.getElementById("page").innerHTML = `
+    <header class="mast"><span><b>${esc(B.day)}</b> &nbsp;${esc(B.date)}</span><span>${esc(B.place)} · ${esc(B.asof)}</span></header>
+    <section class="now">
+      <div class="temp">${B.temp}<sup>°</sup></div>
+      <div class="hl"><span><i>H</i>${B.high}°</span><span><i>L</i>${B.low}°</span></div>
+    </section>
+    <h1 class="say">${esc(B.say)}</h1>
+    <ul class="notes">${B.notes.map(n=>`<li><div><b>${esc(n.what)}</b>${n.when?` <span>${esc(n.when)}</span>`:""}</div></li>`).join("")}</ul>
+    <section class="today"><h2>Today</h2>${chart(B.hours, B.nowIdx)}<div class="axis">${axis}</div></section>
+    <section class="days"><h2>Next three days</h2><div class="cols">${B.days.map(d=>`
+      <div class="col"><h3>${esc(d.name)}</h3><img alt="" src="wx/${esc(d.icon)}.svg">
+        <div class="t">${d.hi}°<span>${d.lo}°</span></div><p>${d.note}</p></div>`).join("")}</div></section>
+    <footer class="house">${B.house.map(h=>`<span>${h}</span>`).join("")}</footer>`;
+}
+if (window.BOARD) render(window.BOARD);
+else fetch("api/board").then(r=>r.json()).then(render);
+</script>
+</body>
+</html>

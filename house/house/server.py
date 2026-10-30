@@ -15,11 +15,12 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
+from board import Board
 
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.10.2"
+VERSION = "0.11.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -279,9 +280,11 @@ class House:
 
 def make_app(house: House) -> web.Application:
     app = web.Application()
+    board = Board(house, house.opts)
 
     async def on_start(_app):
         house.session = aiohttp.ClientSession()
+        app["board_loop"] = asyncio.create_task(board.loop())
 
     async def on_stop(_app):
         await house.session.close()
@@ -307,6 +310,25 @@ def make_app(house: House) -> web.Application:
         await house.do(await req.json())
         return web.json_response({"ok": True})
 
+    async def board_page(_req):
+        return web.FileResponse(WWW / "board.html", headers={"Cache-Control": "no-cache"})
+
+    async def api_board(_req):
+        try:
+            return web.json_response(await board.data())
+        except Exception as ex:
+            log.exception("board failed")
+            return web.json_response({"error": str(ex)}, status=502)
+
+    async def api_board_status(_req):
+        return web.json_response({"enabled": board.enabled, "showing": board.showing,
+                                  "staged_at": board.staged_at, "has_picture": board.has_picture,
+                                  "window": board.in_window(datetime.now(board.tz)), "error": board.last_error})
+
+    async def board_jpeg(_req):
+        # what the Frame would get right now, for looking at
+        return web.Response(body=await board.render(), content_type="image/jpeg")
+
     app.on_startup.append(on_start)
     app.on_cleanup.append(on_stop)
     app.router.add_get("/", index)
@@ -315,6 +337,11 @@ def make_app(house: House) -> web.Application:
     app.router.add_post("/api/do", api_do)
     app.router.add_static("/shared", WWW / "shared")
     app.router.add_static("/wx", WWW / "wx")
+    app.router.add_static("/sky", WWW / "sky")
+    app.router.add_get("/board", board_page)
+    app.router.add_get("/board.jpg", board_jpeg)
+    app.router.add_get("/api/board", api_board)
+    app.router.add_get("/api/board/status", api_board_status)
     return app
 
 
