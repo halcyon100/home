@@ -26,6 +26,64 @@ button{font:inherit;color:inherit}
 .say .n{font-weight:520;font-stretch:122%;letter-spacing:-.035em}
 .say .k{font-stretch:122%;font-weight:520;letter-spacing:-.035em}
 .say small{display:block;margin-top:.45em;font-size:var(--s1);line-height:1.3;font-weight:380;font-stretch:88%;letter-spacing:0;color:var(--quiet);max-width:38ch}
+.hero{display:grid;grid-template-columns:1fr auto;gap:0 2.4em;align-items:start}
+@media (max-width:640px){.hero{grid-template-columns:1fr}}
+
+/* What the light is doing: the mode, the next change, the day's length */
+.state{list-style:none;margin:.2em 0 0;padding:0;display:grid;gap:.5em;font-size:var(--s1);font-stretch:88%;line-height:1.3;color:var(--quiet)}
+.state li{display:grid;grid-template-columns:24px 1fr;gap:.6em;align-items:start}
+.state b{font-weight:520;color:var(--ink);font-stretch:94%}
+.state svg{width:22px;height:18px;margin-top:.1em;color:var(--ink);overflow:visible}
+.state li.off svg{color:var(--quiet)}
+.state .spin{transform-origin:11px 9px;animation:spin 48s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Weather: one animated icon, the temperature, and what's notable */
+.wx{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:0 .5em;margin-top:.55em;min-width:14em}
+.wx img{width:76px;height:76px;margin:-10px 0 -10px -12px}
+.wx .t{font-size:var(--s3);font-weight:300;font-stretch:110%;letter-spacing:-.03em;line-height:1}
+.wx .c{grid-column:1/-1;font-size:var(--s-1);font-stretch:86%;color:var(--quiet);margin-top:.55em;line-height:1.5}
+.wx .c b{font-weight:520;color:var(--ink)}
+@media (max-width:640px){
+  .wx{grid-template-columns:auto auto 1fr;margin:1.1em 0 0;min-width:0;gap:0 .7em}
+  .wx img{width:56px;height:56px;margin:-8px -4px -8px -8px}
+  .wx .c{grid-column:auto;margin:0}
+}
+
+/* The sky behind the page: a quiet wash that follows the weather */
+.sky{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+main{position:relative;z-index:1}
+.sky i{position:absolute;inset:-25%;opacity:0;transition:opacity 3s ease}
+.sky .glow{background:radial-gradient(42% 38% at 82% 6%,rgb(255 196 110 / .11),transparent 70%)}
+[data-sky="night"] .sky .glow{background:radial-gradient(42% 38% at 82% 6%,rgb(150 170 255 / .06),transparent 70%)}
+.sky .stars{inset:0;background:
+  radial-gradient(1px 1px at 12% 18%,rgb(255 255 255 / .55),transparent),radial-gradient(1px 1px at 33% 8%,rgb(255 255 255 / .4),transparent),
+  radial-gradient(1px 1px at 58% 22%,rgb(255 255 255 / .45),transparent),radial-gradient(1.2px 1.2px at 78% 12%,rgb(255 255 255 / .6),transparent),
+  radial-gradient(1px 1px at 91% 30%,rgb(255 255 255 / .35),transparent),radial-gradient(1px 1px at 46% 36%,rgb(255 255 255 / .3),transparent);}
+.sky .cloud{background:radial-gradient(30% 22% at 25% 12%,rgb(190 202 214 / .07),transparent 70%),radial-gradient(36% 26% at 70% 20%,rgb(190 202 214 / .06),transparent 70%),
+  radial-gradient(26% 18% at 50% 46%,rgb(190 202 214 / .04),transparent 70%);animation:drift 120s ease-in-out infinite alternate}
+.sky .grey{background:linear-gradient(180deg,rgb(150 165 180 / .10),transparent 60%)}
+.sky .rain{inset:0;background:repeating-linear-gradient(104deg,transparent 0 22px,rgb(200 215 230 / .07) 22px 23px);background-size:260px 260px;
+  -webkit-mask-image:linear-gradient(180deg,#000,transparent 75%);mask-image:linear-gradient(180deg,#000,transparent 75%);animation:fall 1.1s linear infinite}
+.sky .snow{inset:0;background:radial-gradient(1.6px 1.6px at 20% 30%,rgb(255 255 255 / .5),transparent),radial-gradient(2px 2px at 70% 60%,rgb(255 255 255 / .4),transparent),
+  radial-gradient(1.4px 1.4px at 45% 85%,rgb(255 255 255 / .45),transparent),radial-gradient(1.8px 1.8px at 88% 15%,rgb(255 255 255 / .35),transparent);
+  background-size:220px 220px;-webkit-mask-image:linear-gradient(180deg,#000,transparent 85%);mask-image:linear-gradient(180deg,#000,transparent 85%);animation:flake 22s linear infinite}
+.sky .fog{background:linear-gradient(0deg,rgb(190 200 210 / .11),transparent 55%);animation:drift 90s ease-in-out infinite alternate}
+.sky .flash{inset:0;background:rgb(220 228 255 / .06)}
+[data-wx="clear"] .glow,[data-wx="partly"] .glow,[data-wx="wind"] .glow{opacity:1}
+[data-sky="night"][data-wx="clear"] .stars,[data-sky="night"][data-wx="partly"] .stars{opacity:1;animation:twinkle 9s ease-in-out infinite alternate}
+[data-wx="partly"] .cloud,[data-wx="cloudy"] .cloud,[data-wx="rain"] .cloud,[data-wx="snow"] .cloud,[data-wx="storm"] .cloud,[data-wx="wind"] .cloud{opacity:1}
+[data-wx="cloudy"] .grey,[data-wx="rain"] .grey,[data-wx="snow"] .grey,[data-wx="storm"] .grey,[data-wx="fog"] .grey{opacity:1}
+[data-wx="rain"] .rain,[data-wx="storm"] .rain{opacity:1}
+[data-wx="snow"] .snow{opacity:1}
+[data-wx="fog"] .fog{opacity:1}
+[data-wx="storm"] .flash{animation:flash 11s steps(1) infinite}
+[data-wx="wind"] .cloud{animation-duration:30s}
+@keyframes drift{to{transform:translate3d(7%,1.5%,0)}}
+@keyframes fall{to{background-position:-64px 260px}}
+@keyframes flake{to{background-position:30px 220px}}
+@keyframes twinkle{from{opacity:1}to{opacity:.55}}
+@keyframes flash{0%{opacity:0}96%{opacity:1}97%{opacity:0}98%{opacity:.7}99%{opacity:0}}
 
 /* The day, drawn */
 .day{position:relative;margin:clamp(20px,3vw,36px) 0 0;touch-action:pan-y;cursor:crosshair}
@@ -160,7 +218,7 @@ ol.log.big{font-size:var(--s0)}
 .zone p{margin:0;font-size:var(--s-1);font-stretch:88%;color:var(--quiet);max-width:44ch}
 .zone p b{color:var(--ink);font-weight:500}
 
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.sky i,.state .spin{animation:none!important}}
 </style>
 </head>
 <body>
@@ -169,10 +227,14 @@ ol.log.big{font-size:var(--s0)}
   <button role="tab" data-v="devices" aria-selected="false">Devices</button>
   <button role="tab" data-v="activity" aria-selected="false">Activity</button>
 </nav></app-bar>
+<div class="sky" aria-hidden="true"><i class="glow"></i><i class="stars"></i><i class="cloud"></i><i class="grey"></i><i class="fog"></i><i class="rain"></i><i class="snow"></i><i class="flash"></i></div>
 <main>
 <section id="v-now" role="tabpanel" aria-label="Now">
   <header class="mast" id="mast"></header>
-  <h1 class="say" id="say" aria-live="polite">Reading the house</h1>
+  <div class="hero">
+    <div><h1 class="say" id="say" aria-live="polite">Reading the house</h1><ul class="state" id="state"></ul></div>
+    <aside class="wx" id="wx" aria-label="Weather" hidden></aside>
+  </div>
   <figure class="day" id="day" aria-label="Today's light, brightness over the day, coloured by colour temperature">
     <div class="sunmarks" id="sunmarks" aria-hidden="true"></div>
     <div class="sundot" id="sundot" aria-hidden="true"></div>
@@ -326,27 +388,94 @@ function moon(date){
 const SUN_UP = `<svg viewBox="0 0 22 16" aria-hidden="true"><path d="M3 13.5h16M6.5 13.5a4.5 4.5 0 0 1 9 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 6.5V1.6M8.6 3.8 11 1.4l2.4 2.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const SUN_DOWN = `<svg viewBox="0 0 22 16" aria-hidden="true"><path d="M3 13.5h16M6.5 13.5a4.5 4.5 0 0 1 9 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M11 1.4v4.9M8.6 4.1 11 6.5l2.4-2.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
+const ICON = {
+  cycle: `<svg viewBox="0 0 22 18" aria-hidden="true"><g class="spin" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M17.6 7.2A6.8 6.8 0 0 0 5 5.4M4.4 10.8A6.8 6.8 0 0 0 17 12.6"/><path d="M4.6 2.2v3.4H8M17.4 15.8v-3.4H14"/></g></svg>`,
+  paused: `<svg viewBox="0 0 22 18" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M17.6 7.2A6.8 6.8 0 0 0 5 5.4M4.4 10.8A6.8 6.8 0 0 0 17 12.6"/><path d="M4.6 2.2v3.4H8M17.4 15.8v-3.4H14"/><path d="M4 16 18 2"/></g></svg>`,
+  next: `<svg viewBox="0 0 22 18" aria-hidden="true"><path d="M3 9h15M13.5 4.5 18 9l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+};
+/* Plain words for a colour temperature */
+const kName = k => k<2300 ? "Candlelight" : k<2800 ? "Warm white" : k<3300 ? "Soft white" : k<4000 ? "Neutral white" : k<4800 ? "Cool white" : "Daylight";
+const kTxt = k => `${(Math.round(k/10)*10).toLocaleString()} K`;
+const cap = s => s ? s[0].toUpperCase()+s.slice(1) : s;
+/* Length of the day at a latitude (sun's centre 0.833° below the horizon, for refraction) */
+function dayHours(date, lat){
+  const rad = Math.PI/180, T = (date.getTime()/864e5 + 2440587.5 - 2451545)/36525;
+  const L0 = (280.46646 + T*36000.76983) % 360, M = 357.52911 + T*35999.05029;
+  const C = Math.sin(M*rad)*1.914602 + Math.sin(2*M*rad)*0.019993;
+  const dec = Math.asin(Math.sin(23.4393*rad)*Math.sin((L0 + C)*rad));
+  const c = (Math.sin(-0.833*rad) - Math.sin(lat*rad)*Math.sin(dec))/(Math.cos(lat*rad)*Math.cos(dec));
+  return c >= 1 ? 0 : c <= -1 ? 24 : 2*Math.acos(c)/rad/15;
+}
+function hm(min){ const h = Math.floor(min/60), m = Math.round(min%60); return h ? `${h} h ${m} m` : `${m} m`; }
+function ms(sec){ sec = Math.round(Math.abs(sec)); const m = Math.floor(sec/60), s = sec%60; return m ? `${m} m ${s} s` : `${s} s`; }
+
 function hero(eff, si, nowI){
   const d = S.circadian, p = eff[si];
-  const k = Math.round(p.k/10)*10, b = Math.round(p.b);
-  let lead, sub = "";
   if (scrub != null && si !== nowI){
     const when = new Date(new Date(d.day_start).getTime()+si*d.step_minutes*60e3);
-    lead = `At ${esc(t(when))}, <span class="n">${b}%</span> at <span class="k">${k.toLocaleString()} K</span>`;
-    sub = p.lit ? `${p.lit} of ${d.boost.lights.length || Object.keys(d.lights).length} main-floor lights on the schedule then.` : "Nothing on the schedule then.";
-  } else {
-    lead = `The house is at <span class="n">${b}%</span>, <span class="k">${k.toLocaleString()} K</span>`;
-    if (d.boost.on) sub = new Date(d.now) < new Date(d.boost.ease_from)
-      ? `Bright House is on. It eases back from ${t(d.boost.ease_from)} and settles into the evening by ${t(d.boost.ease_to)}.`
-      : `Bright House is easing back, settled by ${t(d.boost.ease_to)}.`;
-    else {
-      const next = d.keyframes.find(x=>new Date(x.at)>new Date(d.now));
-      sub = next ? `Following the day. Next change at ${t(next.at)}.` : "Following the day.";
-    }
-    if (!d.enabled) sub = "Circadian is paused. Lights stay where people put them.";
-    document.documentElement.style.setProperty("--light", css(kRGB(p.k)));
+    $("say").innerHTML = `At ${esc(t(when))}, ${kName(p.k).toLowerCase()}, <span class="k">${kTxt(p.k)}</span>`;
+    $("state").innerHTML = `<li>${ICON.next}<span>${p.lit ? `${p.lit} light${p.lit>1?"s":""} on the schedule then` : "Nothing on the schedule then"}</span></li>`;
+    return;
   }
-  $("say").innerHTML = `${lead}.<small>${esc(sub)}</small>`;
+  $("say").innerHTML = `${kName(p.k)}, <span class="k">${kTxt(p.k)}</span>`;
+  document.documentElement.style.setProperty("--light", css(kRGB(p.k)));
+  const now = new Date(d.now), rows = [];
+  // The mode
+  const held = Object.values(d.lights).filter(x=>x.state==="on" && x.held);
+  if (!d.enabled) rows.push(`<li class="off">${ICON.paused}<span><b>Natural light</b> paused. Lights stay where people put them.</span></li>`);
+  else if (d.boost.on) rows.push(`<li>${ICON.cycle}<span><b>Bright House</b> ${now < new Date(d.boost.ease_from) ? `on, easing back from ${t(d.boost.ease_from)}` : `easing back, settled by ${t(d.boost.ease_to)}`}</span></li>`);
+  else rows.push(`<li>${ICON.cycle}<span><b>Natural light</b> on${held.length ? ` · <span title="${esc(held.map(x=>x.name).join(", "))}">${held.length} set by hand</span>` : ""}</span></li>`);
+  // The next change you'd notice
+  if (d.enabled){
+    const d0 = new Date(d.day_start), step = d.step_minutes*60e3, n = eff.length;
+    let nx = null;
+    for (const f of d.keyframes){
+      const at = new Date(f.at), i = Math.round((at-d0)/step);
+      if (at <= now || i >= n) continue;
+      const q = eff[i], dk = q.k - p.k, db = q.b - p.b;
+      if (Math.abs(dk) < 150 && Math.abs(db) < 6) continue;
+      const what = Math.abs(dk) >= 150
+        ? `${dk < 0 ? "warmer" : "cooler"}, to ${kTxt(q.k)}${Math.abs(db) >= 6 ? (db < 0 ? ", dimmer" : ", brighter") : ""}`
+        : q.b < 1 ? "lights off" : db < 0 ? "dimmer" : "brighter";
+      nx = `<b>${t(at)}</b> ${esc(cap(f.name))} · ${what}`; break;
+    }
+    rows.push(`<li>${ICON.next}<span>${nx || "No more changes today"}</span></li>`);
+  }
+  // Gaining or losing light
+  if (S.home && S.home.lat != null){
+    const len = (new Date(d.sunset) - new Date(d.sunrise))/6e4;
+    const dsec = (dayHours(new Date(now.getTime()+864e5), S.home.lat) - dayHours(now, S.home.lat))*3600;
+    const trend = Math.abs(dsec) < 1 ? "about the same tomorrow" : `${dsec > 0 ? "gaining" : "losing"} ${ms(dsec)} a day`;
+    rows.push(`<li>${dsec >= 0 ? SUN_UP : SUN_DOWN}<span><b>${hm(len)}</b> of daylight · ${trend}</span></li>`);
+  }
+  $("state").innerHTML = rows.join("");
+}
+
+/* Weather: Meteocons (MIT, Bas Milius), vendored in wx/ */
+const WX_ICON = {sunny:"clear-day","clear-night":"clear-night",partlycloudy:"partly-cloudy-",cloudy:"overcast",rainy:"rain",pouring:"extreme-rain",
+  snowy:"snow","snowy-rainy":"sleet",hail:"hail",fog:"fog",windy:"wind","windy-variant":"wind",lightning:"thunderstorms-","lightning-rainy":"thunderstorms-rain",exceptional:"not-available"};
+const WX_NAME = {sunny:"Sunny","clear-night":"Clear",partlycloudy:"Partly cloudy",cloudy:"Cloudy",rainy:"Rain",pouring:"Heavy rain",snowy:"Snow",
+  "snowy-rainy":"Sleet",hail:"Hail",fog:"Fog",windy:"Windy","windy-variant":"Windy",lightning:"Lightning","lightning-rainy":"Storms",exceptional:"Unusual weather"};
+const WX_SKY = {sunny:"clear","clear-night":"clear",partlycloudy:"partly",cloudy:"cloudy",rainy:"rain",pouring:"rain",snowy:"snow","snowy-rainy":"snow",
+  hail:"storm",fog:"fog",windy:"wind","windy-variant":"wind",lightning:"storm","lightning-rainy":"storm"};
+const uvWord = u => u < 3 ? "low" : u < 6 ? "moderate" : u < 8 ? "high" : u < 11 ? "very high" : "extreme";
+let wxShown = "";
+function weather(w, up){
+  const el = $("wx");
+  document.documentElement.dataset.wx = w ? (WX_SKY[w.state] || "") : "";
+  if (!w || !w.state){ el.hidden = true; return; }
+  let icon = WX_ICON[w.state] || "not-available";
+  if (icon.endsWith("-")) icon += up ? "day" : "night";
+  const notes = [];
+  if (up && w.uv != null) notes.push(`UV <b>${Math.round(w.uv)}</b> ${uvWord(w.uv)}`);
+  if (w.wind != null) notes.push(`Wind <b>${Math.round(w.wind)}</b> ${esc(w.wind_unit||"")}`);
+  if (w.humidity != null) notes.push(`Humidity <b>${Math.round(w.humidity)}%</b>`);
+  const key = icon;
+  if (wxShown !== key){ el.innerHTML = `<img alt="" src="wx/${icon}.svg"><div><div class="t">${Math.round(w.temperature)}°</div></div><div class="c"></div>`; wxShown = key; }
+  el.querySelector(".t").textContent = `${Math.round(w.temperature)}°`;
+  el.querySelector(".c").innerHTML = `<b>${esc(WX_NAME[w.state]||w.state)}</b><br>${notes.join(" · ")}`;
+  el.setAttribute("aria-label", `Weather: ${WX_NAME[w.state]||w.state}, ${Math.round(w.temperature)} degrees`);
+  el.hidden = false;
 }
 
 function render(){
@@ -355,9 +484,9 @@ function render(){
   if (d) try{ localStorage.setItem("house-sun", JSON.stringify({rise:d.sunrise, set:d.sunset})); }catch(e){}
   const now = new Date(s.now);
   const date = new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric"}).format(now);
-  const wx = s.weather ? `<span><b>${Math.round(s.weather.temperature)}${esc(s.weather.unit||"°")}</b> ${esc(({rainy:"rain",pouring:"heavy rain",cloudy:"cloudy",partlycloudy:"partly cloudy",sunny:"sun","clear-night":"clear",snowy:"snow",fog:"fog",windy:"wind",lightning:"storms","lightning-rainy":"storms"})[s.weather.state]||s.weather.state)}</span>` : "";
   const mo = moon(now);
-  $("mast").innerHTML = `<span><b>${esc(date)}</b></span><span><b>${t(now)}</b></span>${wx}<span class="moon" title="${mo.pct}% lit">${mo.svg}${esc(mo.name)}</span>`;
+  $("mast").innerHTML = `<span><b>${esc(date)}</b></span><span><b>${t(now)}</b></span><span class="moon" title="${mo.pct}% lit">${mo.svg}${esc(mo.name)}</span>`;
+  weather(s.weather, s.sun.up);
   draw();
 
   $("acts").innerHTML = s.shortcuts.map(c=>{
@@ -374,7 +503,6 @@ function render(){
     const row = (a,b,live) => `<dt>${a}</dt><dd${live?' class="live"':""}>${b}</dd>`;
     $("status").innerHTML =
       row("Lights on", `${on.length} of ${L.length}`, on.length>0) +
-      row("Following the schedule", `${on.filter(x=>!x.held).length}`) +
       row("Set by hand", held.length ? held.map(x=>esc(x.name)).join(", ") : "None");
     $("daylight").innerHTML = d.zones.map(z=>zoneMeter(z, L.filter(x=>x.zone===z.name))).join("");
   } else $("status").innerHTML = `<dt class="err">Circadian isn't answering.</dt><dd></dd>`;
