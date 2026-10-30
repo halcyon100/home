@@ -1162,6 +1162,7 @@ def player_loop() -> None:
 # part of your pictures: it's hidden from the library and the player, and taken off the TV when
 # it's put away, so the TV's own rotation can't pick it up.
 BOARD_LOCK = threading.Lock()
+BOARD_BRIGHTER = 3   # notches of Art Mode brightness added while the board is up
 
 
 def board_state() -> dict:
@@ -1234,8 +1235,18 @@ def api_board_show() -> dict:
 
         TVC.call(go)
         b["showing"], b["since"] = True, time.time()
+        # A few notches brighter while it's up, so the words read across the kitchen
+        try:
+            br = api_display().get("brightness") or {}
+            if br.get("value") is not None:
+                b["brightness"] = int(br["value"])
+                up = min(int(br.get("max") or 10), b["brightness"] + BOARD_BRIGHTER)
+                if up != b["brightness"]:
+                    oneshot(lambda a: a.set_brightness(str(up)), 8)
+        except Exception as e:
+            log.info("Board: couldn't brighten the screen (%s)", e)
         STATE.set("board", b)
-    log.info("Board on screen (was %s)", b.get("prev"))
+    log.info("Board on screen (was %s, brightness %s → +%d)", b.get("prev"), b.get("brightness"), BOARD_BRIGHTER)
     return {"ok": True, "id": cid}
 
 
@@ -1249,6 +1260,15 @@ def api_board_hide() -> dict:
                     TVC.call(lambda a: a.select_image(prev, show=True))
                 except Exception as e:
                     log.info("Board: couldn't bring back %s (%s)", prev, e)
+            if b.get("brightness") is not None:
+                try:
+                    if sched_settings()["on"]:
+                        apply_schedule(force=True)      # back to whatever the schedule says for now
+                    else:
+                        level = int(b["brightness"])
+                        oneshot(lambda a: a.set_brightness(str(level)), 8)
+                except Exception as e:
+                    log.info("Board: couldn't put the brightness back (%s)", e)
             if rot:
                 try:
                     pl = STATE.get("playing") or {}
