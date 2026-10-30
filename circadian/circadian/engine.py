@@ -333,7 +333,10 @@ class Overrides:
         # Only treat it as a person if it's outside what our own fade explains.
         if self._within_expected(t, attrs):
             return "none"
-        if not t.recent and self.grace_until and now < self.grace_until:
+        # Just after a restart we've lost the history of fades already under way, so the
+        # bridge's late reports of them can't be checked: they're not people (lesson: a
+        # restart at 07:29 mid-ramp held Central for the morning, 2026-10-30).
+        if self.grace_until and now < self.grace_until:
             return "none"
         t.held, t.held_reason = True, f"changed at the device: {t.mismatch}"
         return "held"
