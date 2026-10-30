@@ -117,7 +117,13 @@ def _dst_note(now: datetime, tz: ZoneInfo) -> dict | None:
         t2 = (t + timedelta(hours=1)).astimezone(tz)
         if t2.utcoffset() != off:
             back = t2.utcoffset() < off
-            when_day = "tonight" if t2.date() <= now.date() + timedelta(days=1) and t2.hour < 12 else clock(t2)
+            ahead = (t2.date() - now.date()).days
+            if t2.hour < 12 and ahead <= 1:
+                when_day = "tonight"
+            elif t2.hour < 12 and ahead == 2:
+                when_day = "tomorrow night"
+            else:
+                when_day = t2.strftime("%A")
             return {"what": f"Clocks {'fall back' if back else 'spring forward'} {when_day}",
                     "when": "2 am becomes 1 am" if back else "2 am becomes 3 am"}
         t = t2
@@ -246,7 +252,7 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
             tail = f"{'showers' if rain[0] != 'Rain likely' else 'rain'} from {clause.split(' – ')[0]}"
         say = f"{base}, {tail}."
     elif high is not None:
-        say = f"{base} and dry, up to {high}°." if cond not in ("sunny", "clear-night") else f"{base}, up to {high}°."
+        say = f"{base}, dry all day, up to {high}°."
     else:
         say = f"{base}."
 
@@ -316,6 +322,7 @@ class Board:
         self.last_error = ""
         self.staging: asyncio.Task | None = None
         self.has_picture = False
+        self.try_until = 0.0     # "show it now", from the House page, for a few minutes
         self.tz = ZoneInfo("America/Chicago")
 
     # ------------------------------------------------------------ data
@@ -415,24 +422,37 @@ class Board:
 
     async def tick(self):
         now = datetime.now(self.tz)
-        here = await self.present()
+        trying = time.time() < self.try_until
+        here = await self.present() or trying
         if here:
             self.last_seen = time.time()
-        window = self.in_window(now)
+        window = self.in_window(now) or trying
         if window and time.time() - self.staged_at > self.every and not self.staging:
             self.staging = asyncio.create_task(self._stage_bg())
         if window and here and not self.showing and self.has_picture:
             r = await self.frame_post("/api/board/show")
             self.showing = bool(r.get("ok"))
             log.info("Kitchen: someone's here; board %s", "on" if self.showing else f"not shown ({r.get('reason')})")
-        if self.showing and not here and time.time() - self.last_seen > self.linger:
+        if self.showing and not here and time.time() - self.last_seen > (5 if self.try_until else self.linger):
             await self.frame_post("/api/board/hide")
             self.showing = False
             self.staged_at, self.has_picture = 0.0, False   # the Frame took it off the TV; stage a fresh one
+            self.try_until = 0.0
             log.info("Kitchen empty for %d min; art's back", self.linger // 60)
         if not window and not self.showing and self.has_picture and not self.staging:
             await self.frame_post("/api/board/hide")   # take the staged picture off the TV for the day
             self.staged_at, self.has_picture = 0.0, False
+
+    async def try_now(self, minutes: int = 3) -> dict:
+        """Put the board up now, whatever the time, and take it down after a few minutes."""
+        r = await self.stage()
+        if not r.get("ok"):
+            return r
+        self.try_until = time.time() + minutes * 60
+        self.last_seen = time.time()
+        r = await self.frame_post("/api/board/show")
+        self.showing = bool(r.get("ok"))
+        return r
 
     async def loop(self):
         if not self.enabled:

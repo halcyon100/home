@@ -80,3 +80,10 @@ def test_pollen_is_only_notable_when_it_matters():
     high = build(now, TZ, cur, h, daily, None, {"index": "8.1", "rating": "Medium-High", "top": ["Ragweed"]}, [])
     assert not any(n["what"].startswith("Pollen") for n in low["notes"])
     assert any(n["what"] == "Pollen medium-high" for n in high["notes"])
+
+
+def test_clocks_on_friday_afternoon_are_tomorrow_night():
+    h, daily = saturday()
+    now = datetime(2026, 10, 30, 14, 30, tzinfo=TZ)
+    b = build(now, TZ, {"state": "partlycloudy", "attributes": {"temperature": 57}}, h, daily, None, None, [])
+    assert {"what": "Clocks fall back tomorrow night", "when": "2 am becomes 1 am"} in b["notes"]
