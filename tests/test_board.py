@@ -87,3 +87,13 @@ def test_clocks_on_friday_afternoon_are_tomorrow_night():
     now = datetime(2026, 10, 30, 14, 30, tzinfo=TZ)
     b = build(now, TZ, {"state": "partlycloudy", "attributes": {"temperature": 57}}, h, daily, None, None, [])
     assert {"what": "Clocks fall back tomorrow night", "when": "2 am becomes 1 am"} in b["notes"]
+
+
+def test_the_sky_now_is_the_station_report_not_the_model():
+    from board import observed
+    nws = {"state": "sunny", "attributes": {"temperature": 52, "humidity": 67}}
+    model = {"state": "cloudy", "attributes": {"temperature": 57, "uv_index": 1.3, "humidity": 58}}
+    now = observed(nws, model)
+    assert now["state"] == "sunny"
+    assert now["attributes"]["temperature"] == 52 and now["attributes"]["uv_index"] == 1.3
+    assert observed({"state": "unavailable"}, model) == model

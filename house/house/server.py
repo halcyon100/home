@@ -15,12 +15,12 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
-from board import Board
+from board import Board, observed
 
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.11.6"
+VERSION = "0.11.7"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -224,7 +224,8 @@ class House:
             if not row["name"]:
                 row["name"] = by.get(row["entity"], {}).get("attributes", {}).get("friendly_name", row["entity"])
         sun = by.get("sun.sun", {}).get("attributes", {})
-        wx = by.get(self.opts.get("weather", "weather.forecast_home"), {})
+        wx = observed(by.get(self.opts.get("forecast", "weather.nws")),
+                      by.get(self.opts.get("weather", "weather.forecast_home")))
         wa = wx.get("attributes", {})
         al = by.get(self.opts.get("allergy", "sensor.allergy_index_today"), {})
         pollen = None

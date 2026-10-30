@@ -275,6 +275,21 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
     }
 
 
+def observed(nws: dict | None, model: dict | None) -> dict:
+    """The sky and temperature as measured: the Weather Service's latest station report, with the
+    forecast model (met.no) filling in what the station doesn't say. The model's "now" is a forecast
+    for this hour, so on a sunny afternoon it can still say cloudy."""
+    nws, model = nws or {}, model or {}
+    if nws.get("state") in (None, "unknown", "unavailable"):
+        return model
+    attrs = dict(model.get("attributes") or {})
+    na = nws.get("attributes") or {}
+    for k in ("temperature", "humidity", "wind_speed", "wind_bearing"):
+        if na.get(k) is not None:
+            attrs[k] = na[k]
+    return {"state": nws["state"], "attributes": attrs}
+
+
 def house_line(inside: float | None, day: dict | None, pollen: dict | None) -> list[str]:
     out = []
     if inside is not None:
@@ -343,7 +358,7 @@ class Board:
             self.forecasts(nws, "hourly"), self.forecasts(nws, "twice_daily"))
         by = {s["entity_id"]: s for s in states}
         self.tz = ZoneInfo(cfg.get("time_zone") or "America/Chicago")
-        current = by.get(h.opts.get("weather", "weather.forecast_home"), {})
+        current = observed(by.get(nws), by.get(h.opts.get("weather", "weather.forecast_home")))
         al = by.get(h.opts.get("allergy", "sensor.allergy_index_today"), {})
         pollen = None
         if al.get("state") not in (None, "unknown", "unavailable"):
