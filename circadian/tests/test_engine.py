@@ -194,6 +194,35 @@ def test_overlapping_fades_not_a_person():
     assert a == "none"
 
 
+
+def test_a_long_morning_ramp_is_not_a_person():
+    # 7:25 wake at 35%, then two-minute ticks climbing toward 55%. Hue reports the target
+    # right away, then the real (lagging) level later: a report from early in the ramp
+    # must still read as our own fade (lesson: Central held at 07:30 on 2026-10-30).
+    ov = Overrides()
+    t = at(7, 25)
+    ov.note_command("light.c", None, t, 0, 35, 2400, 3)                      # 0 -> 89
+    b = 89
+    for i in range(1, 5):                                                    # 89 -> ~133
+        nxt = 35 + 4 * i
+        ov.note_command("light.c", None, t + timedelta(seconds=120 * i), b, nxt, 2400, 120)
+        b = round(nxt * 2.55)
+    a = ov.on_state("light.c", "on", "on", {"brightness": 112, "color_mode": "color_temp",
+                                            "color_temp_kelvin": 2400}, "bridge",
+                    t + timedelta(seconds=490), None)
+    assert a == "none"
+
+def test_restart_mid_fade_is_not_a_person():
+    ov = Overrides()
+    now = at(7, 30)
+    ov.grace_until = now + timedelta(minutes=3)
+    # first tick after the restart starts from the optimistic level HA shows (135)...
+    ov.note_command("light.c", None, now, 135, 55, 2700, 120)
+    # ...then the bridge reports where the pre-restart fade really was
+    a = ov.on_state("light.c", "on", "on", {"brightness": 125, "color_mode": "color_temp",
+                                            "color_temp_kelvin": 2550}, "bridge", now + timedelta(seconds=54), None)
+    assert a == "none"
+
 def test_restart_grace():
     ov = Overrides()
     now = at(7, 33)
