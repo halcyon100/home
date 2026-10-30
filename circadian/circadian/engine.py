@@ -15,7 +15,7 @@ ON = "on"     # power entity (e.g. a switch) to turn on at wake
 KEEP_OFF = "keepoff"  # if a room-wide "on" turns this light on, turn it back off (direct requests still win)
 SHUT = "shutoff"     # in a wake keyframe: turn this light off once at that time (people can turn it back on)
 
-_TIME_RE = re.compile(r"^\s*(sunrise|sunset|\d{1,2}:\d{2})\s*(?:([+-])\s*(\d{1,2}):(\d{2}))?\s*$")
+_TIME_RE = re.compile(r"^\s*(sunrise|sunset|noon|\d{1,2}:\d{2})\s*(?:([+-])\s*(\d{1,2}):(\d{2}))?\s*$")
 
 
 @dataclass(frozen=True)
@@ -118,6 +118,9 @@ def resolve(at: str, day: date, sun: SunFn, tz) -> datetime:
         t = sun(day)[0]
     elif base == "sunset":
         t = sun(day)[1]
+    elif base == "noon":   # solar noon: halfway between sunrise and sunset
+        rise, set_ = sun(day)
+        t = rise + (set_ - rise) / 2
     else:
         h, mi = base.split(":")
         t = datetime.combine(day, time(int(h), int(mi)), tz)
@@ -159,7 +162,10 @@ class Schedule:
             return tb
         if not any(k.channel == "color" and entity in k.lights for k in self.keyframes):
             return tb
-        tk = self._track(self.points(entity, now, ("both", "color")), now, color=True)
+        # the color track only uses keyframes that name a color, so brightness can be set
+        # through the day while the sun alone decides the color
+        cpts = [p for p in self.points(entity, now, ("both", "color")) if p[1].kind == "level" and p[1].kelvin]
+        tk = self._track(cpts, now, color=True)
         k = tk.kelvin if tk is not None and tk.kind == "level" else tb.kelvin
         return Target(tb.brightness, k, "level", tb.via)
 

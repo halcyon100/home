@@ -290,3 +290,28 @@ def test_color_keyframe_rules():
         keyframes_from_options([{"name": "x", "at": "18:00", "lights": ["light.a - 3000"]}])
     with pytest.raises(ValueError):
         keyframes_from_options([{"name": "x", "at": "18:00", "channel": "color", "wake": True, "lights": ["light.a - 3000"]}])
+
+
+SUN = [
+    {"name": "wake", "at": "07:00", "lights": ["light.a 40 2400"]},
+    {"name": "bright", "at": "09:00", "lights": ["light.a 80"]},            # brightness only: no color
+    {"name": "rise", "at": "sunrise", "channel": "color", "lights": ["light.a - 2500"]},
+    {"name": "peak", "at": "noon", "channel": "color", "lights": ["light.a - 5000"]},
+    {"name": "set", "at": "sunset", "channel": "color", "lights": ["light.a - 2700"]},
+    {"name": "night", "at": "21:30", "lights": ["light.a 12 2400"]},
+]
+
+
+def test_color_follows_the_sun_while_brightness_follows_the_day():
+    s = Schedule(keyframes_from_options(SUN), sun_winter, TZ)
+    d = date(2026, 12, 1)
+    rise, set_ = sun_winter(d)
+    noon = rise + (set_ - rise) / 2
+    assert s.target_at("light.a", noon).kelvin == 5000
+    assert 12 < s.target_at("light.a", noon).brightness < 80   # gliding 80 -> 12 by 21:30
+    assert s.target_at("light.a", set_).kelvin == 2700
+    # a brightness-only keyframe doesn't drag the color toward anything
+    mid_morning = rise + (noon - rise) / 2
+    k = s.target_at("light.a", mid_morning).kelvin
+    assert 2500 < k < 5000
+    assert s.target_at("light.a", datetime.combine(d, time(21, 30), TZ)).kelvin == 2400
