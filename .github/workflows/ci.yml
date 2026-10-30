@@ -28,7 +28,7 @@ jobs:
       - run: ruff check .
       - run: python -m pytest -q tests
       - run: cd circadian && CIRCADIAN_STATE=$RUNNER_TEMP/circadian.json python -m pytest -q tests
-      - run: python -m py_compile frame/frame_app.py house/house/server.py music/music/server.py music/music/listen.py
+      - run: python -m py_compile frame/frame_app.py house/house/server.py house/house/board.py music/music/server.py music/music/listen.py
       - run: node --check shared/appnav.js
 
   # Passwords, keys and tokens never get into the code: any in the history fails the check.
