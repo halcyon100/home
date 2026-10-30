@@ -468,6 +468,7 @@ function weather(w, up){
   if (icon.endsWith("-")) icon += up ? "day" : "night";
   const notes = [];
   if (up && w.uv != null) notes.push(`UV <b>${Math.round(w.uv)}</b> ${uvWord(w.uv)}`);
+  if (w.pollen && w.pollen.rating) notes.push(`Pollen <b>${esc(w.pollen.rating.toLowerCase())}</b>${w.pollen.top.length ? ", "+esc(w.pollen.top.slice(0,2).join(", ").toLowerCase()) : ""}`);
   if (w.wind != null) notes.push(`Wind <b>${Math.round(w.wind)}</b> ${esc(w.wind_unit||"")}`);
   if (w.humidity != null) notes.push(`Humidity <b>${Math.round(w.humidity)}%</b>`);
   const key = icon;
