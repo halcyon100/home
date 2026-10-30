@@ -20,7 +20,7 @@ from board import Board
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.11.0"
+VERSION = "0.11.1"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -325,6 +325,14 @@ def make_app(house: House) -> web.Application:
                                   "staged_at": board.staged_at, "has_picture": board.has_picture,
                                   "window": board.in_window(datetime.now(board.tz)), "error": board.last_error})
 
+    async def api_board_try(req):
+        b = await req.json() if req.can_read_body else {}
+        try:
+            return web.json_response(await board.try_now(int(b.get("minutes", 3))))
+        except Exception as ex:
+            log.exception("board try failed")
+            return web.json_response({"ok": False, "reason": str(ex)}, status=502)
+
     async def board_jpeg(_req):
         # what the Frame would get right now, for looking at
         return web.Response(body=await board.render(), content_type="image/jpeg")
@@ -342,6 +350,7 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/board.jpg", board_jpeg)
     app.router.add_get("/api/board", api_board)
     app.router.add_get("/api/board/status", api_board_status)
+    app.router.add_post("/api/board/try", api_board_try)
     return app
 
 
