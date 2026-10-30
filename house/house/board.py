@@ -458,6 +458,11 @@ class Board:
         if not self.enabled:
             return
         await asyncio.sleep(10)
+        try:
+            # Start clean: if a board was up when this app last stopped, the art comes back first.
+            await self.frame_post("/api/board/hide")
+        except Exception as ex:
+            log.info("Board: couldn't reach the Frame app yet (%s)", ex)
         while True:
             try:
                 await self.tick()
