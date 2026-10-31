@@ -315,7 +315,8 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
     return {
         "day": now.strftime("%A"), "date": now.strftime("%B ") + str(now.day), "place": place,
         "asof": clock(now, exact=True), "temp": round(temp) if temp is not None else "–",
-        "high": high, "low": low, "say": say, "notes": notes[:4], "hours": chart, "nowIdx": 0,
+        "high": high, "low": low, "humidity": round(attrs["humidity"]) if attrs.get("humidity") is not None else None,
+        "say": say, "notes": notes[:4], "hours": chart, "nowIdx": 0,
         "days": days, "house": house, "sky": sky, "image": image,
         "moon": moon(now), "light": light, "dim": light == "night" and not night_photo, "label": "Tonight" if light == "night" else "Today",
     }
@@ -336,10 +337,10 @@ def observed(nws: dict | None, model: dict | None) -> dict:
     return {"state": nws["state"], "attributes": attrs}
 
 
-def house_line(inside: float | None, day: dict | None, pollen: dict | None) -> list[str]:
+def house_line(inside: float | None, day: dict | None, pollen: dict | None, damp: float | None = None) -> list[str]:
     out = []
     if inside is not None:
-        out.append(f"<b>{round(inside)}°</b> inside")
+        out.append(f"<b>{round(inside)}°</b>" + (f" · <b>{round(damp)}%</b>" if damp is not None else "") + " inside")
     if day:
         lights = [x for x in (day.get("lights") or {}).values() if x.get("state") == "on"]
         if not day.get("enabled", True):
@@ -371,6 +372,7 @@ class Board:
         self.house = house
         self.sensor = opts.get("board_presence", "binary_sensor.kitchen_presence_presence")
         self.inside = opts.get("board_inside", "sensor.kitchen_presence_temperature")
+        self.inside_humidity = opts.get("board_inside_humidity", "sensor.kitchen_presence_humidity")
         self.frame = opts.get("frame_url", "http://172.30.32.1:8800").rstrip("/")
         self.start = _hhmm(opts.get("board_from"), "05:00")
         self.end = _hhmm(opts.get("board_until"), "11:00")
@@ -415,6 +417,10 @@ class Board:
             inside = float(by.get(self.inside, {}).get("state"))
         except (TypeError, ValueError):
             inside = None
+        try:
+            damp = float(by.get(self.inside_humidity, {}).get("state"))
+        except (TypeError, ValueError):
+            damp = None
         sun = by.get("sun.sun", {}).get("attributes", {})
         sunrise = sunset = None
         if day and day.get("sunrise"):
@@ -425,7 +431,7 @@ class Board:
         place = cfg.get("location_name") or ""
         place = h.opts.get("board_place") or ("Colgate" if place in ("", "Home") else place)
         return build(datetime.now(self.tz), self.tz, current, hourly, daily, sunrise, pollen,
-                     house_line(inside, day, pollen), place, sunset)
+                     house_line(inside, day, pollen, damp), place, sunset)
 
     # ------------------------------------------------------------ picture
     async def render(self) -> bytes:
