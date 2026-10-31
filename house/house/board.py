@@ -136,6 +136,26 @@ NIGHT_WORD = {"sunny": "Clear", "clear-night": "Clear", "partlycloudy": "Partly 
               "exceptional": "Unsettled"}
 
 
+def moon(now: datetime) -> dict:
+    """Moon phase from the mean synodic month, counted from the new moon of 6 Jan 2000 18:14 UTC."""
+    import math
+    syn = 29.530588853
+    age = ((now.timestamp() - datetime(2000, 1, 6, 18, 14, tzinfo=ZoneInfo("UTC")).timestamp()) / 86400) % syn
+    f = age / syn
+    lit = (1 - math.cos(2 * math.pi * f)) / 2
+    if age < 1 or age > syn - 1:
+        name = "New moon"
+    elif abs(age - syn / 2) < 1:
+        name = "Full moon"
+    elif abs(age - syn / 4) < 1:
+        name = "First quarter"
+    elif abs(age - 3 * syn / 4) < 1:
+        name = "Last quarter"
+    else:
+        name = ("Waxing crescent", "Waxing gibbous", "Waning gibbous", "Waning crescent")[min(3, int(f * 4))]
+    return {"name": name, "pct": round(lit * 100), "f": round(f, 4)}
+
+
 def light_of(now: datetime, sunrise: datetime | None, sunset: datetime | None) -> str:
     """night, dawn or day. Night runs from half an hour after sunset to 45 minutes before sunrise."""
     if sunset and now >= sunset + timedelta(minutes=30):
@@ -297,7 +317,7 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
         "asof": clock(now, exact=True), "temp": round(temp) if temp is not None else "–",
         "high": high, "low": low, "say": say, "notes": notes[:4], "hours": chart, "nowIdx": 0,
         "days": days, "house": house, "sky": sky, "image": image,
-        "light": light, "dim": light == "night" and not night_photo, "label": "Tonight" if light == "night" else "Today",
+        "moon": moon(now), "light": light, "dim": light == "night" and not night_photo, "label": "Tonight" if light == "night" else "Today",
     }
 
 
