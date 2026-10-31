@@ -156,6 +156,53 @@ def moon(now: datetime) -> dict:
     return {"name": name, "pct": round(lit * 100), "f": round(f, 4)}
 
 
+def sun_elevation(when: datetime, lat: float, lon: float) -> float:
+    """Solar elevation in degrees (NOAA's approximation; good to a fraction of a degree)."""
+    import math
+    rad = math.pi / 180
+    jd = when.timestamp() / 86400 + 2440587.5
+    T = (jd - 2451545) / 36525
+    L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360
+    M = 357.52911 + T * (35999.05029 - 0.0001537 * T)
+    C = (math.sin(M * rad) * (1.914602 - T * (0.004817 + 0.000014 * T)) + math.sin(2 * M * rad) * (0.019993 - 0.000101 * T)
+         + math.sin(3 * M * rad) * 0.000289)
+    lam = L0 + C - 0.00569 - 0.00478 * math.sin((125.04 - 1934.136 * T) * rad)
+    eps = 23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60 + 0.00256 * math.cos((125.04 - 1934.136 * T) * rad)
+    dec = math.asin(math.sin(eps * rad) * math.sin(lam * rad))
+    y = math.tan(eps * rad / 2) ** 2
+    e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T)
+    eqt = 4 / rad * (y * math.sin(2 * L0 * rad) - 2 * e * math.sin(M * rad) + 4 * e * y * math.sin(M * rad) * math.cos(2 * L0 * rad)
+                     - 0.5 * y * y * math.sin(4 * L0 * rad) - 1.25 * e * e * math.sin(2 * M * rad))
+    utc = when.astimezone(ZoneInfo("UTC"))
+    mins = utc.hour * 60 + utc.minute + utc.second / 60
+    ha = ((mins + eqt + 4 * lon) / 4 - 180) * rad
+    return math.asin(math.sin(lat * rad) * math.sin(dec) + math.cos(lat * rad) * math.cos(dec) * math.cos(ha)) / rad
+
+
+def house_light(day: dict | None, when: datetime) -> tuple[float, int] | None:
+    """What the house's light is doing at a moment, from Circadian's day: the average level of the
+    main-floor lights and their median colour, the same curve the House app draws."""
+    if not day or not day.get("day_start"):
+        return None
+    i = round((when - datetime.fromisoformat(day["day_start"])).total_seconds() / 60 / (day.get("step_minutes") or 10))
+    ids = (day.get("boost") or {}).get("lights") or list((day.get("lights") or {}).keys())
+    levels, kelvins = [], []
+    for e in ids:
+        curve = ((day.get("lights") or {}).get(e) or {}).get("curve") or []
+        if 0 <= i < len(curve) and curve[i]:
+            levels.append(curve[i][0] or 0)
+            if curve[i][1]:
+                kelvins.append(curve[i][1])
+    if not levels:
+        return None
+    b = sum(levels) / len(levels)
+    mult = (day.get("boost") or {}).get("mult")
+    if (day.get("boost") or {}).get("on") and mult and i < len(mult) and mult[i]:
+        b = min(100.0, b * mult[i])
+    kelvins.sort()
+    return round(b, 1), (kelvins[len(kelvins) // 2] if kelvins else 2700)
+
+
 def light_of(now: datetime, sunrise: datetime | None, sunset: datetime | None) -> str:
     """night, dawn or day. Night runs from half an hour after sunset to 45 minutes before sunrise."""
     if sunset and now >= sunset + timedelta(minutes=30):
@@ -303,7 +350,8 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
     # Today, hour by hour, from now to midnight
     chart = [{"h": "Now" if i == 0 else clock(h["dt"]).replace(" am", "").replace(" pm", "")
               if h["dt"].hour not in (0, 12, 6, 18) else clock(h["dt"]),
-              "t": round(h["temperature"]), "p": round(h.get("precipitation_probability") or 0)}
+              "t": round(h["temperature"]), "p": round(h.get("precipitation_probability") or 0),
+              "at": h["dt"].isoformat()}
              for i, h in enumerate(today) if h.get("temperature") is not None]
 
     sky = SKY_OF.get(cond, "overcast")
@@ -335,6 +383,21 @@ def observed(nws: dict | None, model: dict | None) -> dict:
         if na.get(k) is not None:
             attrs[k] = na[k]
     return {"state": nws["state"], "attributes": attrs}
+
+
+def inside_block(inside: float | None, damp: float | None, day: dict | None) -> dict:
+    notes = []
+    if day:
+        lights = [x for x in (day.get("lights") or {}).values() if x.get("state") == "on"]
+        if not day.get("enabled", True):
+            notes.append("Natural light paused")
+        elif (day.get("boost") or {}).get("on"):
+            notes.append("Bright House on")
+        else:
+            notes.append("Natural light on")
+        notes.append(f"<b>{len(lights)}</b> light{'s' if len(lights) != 1 else ''} on")
+    return {"t": round(inside) if inside is not None else None, "rh": round(damp) if damp is not None else None,
+            "notes": notes}
 
 
 def house_line(inside: float | None, day: dict | None, pollen: dict | None, damp: float | None = None) -> list[str]:
@@ -430,8 +493,20 @@ class Board:
             sunrise = datetime.fromisoformat(sun["next_rising"])
         place = cfg.get("location_name") or ""
         place = h.opts.get("board_place") or ("Colgate" if place in ("", "Home") else place)
-        return build(datetime.now(self.tz), self.tz, current, hourly, daily, sunrise, pollen,
-                     house_line(inside, day, pollen, damp), place, sunset)
+        b = build(datetime.now(self.tz), self.tz, current, hourly, daily, sunrise, pollen,
+                  house_line(inside, day, pollen, damp), place, sunset)
+        # The day, together: outside temperature, the sun's height and the house's light on one clock
+        lat, lon = cfg.get("latitude"), cfg.get("longitude")
+        for p in b["hours"]:
+            at = datetime.fromisoformat(p["at"])
+            if lat is not None and lon is not None:
+                p["sun"] = round(sun_elevation(at, lat, lon), 1)
+            hl = house_light(day, at)
+            if hl:
+                p["light"], p["k"] = hl
+        b["inside"] = inside_block(inside, damp, day)
+        b["pollen"] = pollen
+        return b
 
     # ------------------------------------------------------------ picture
     async def render(self) -> bytes:

@@ -33,12 +33,12 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 
 /* Now: the number and the sentence */
 .now{margin-top:52px;display:flex;align-items:flex-start;gap:34px}
-.temp{font-size:300px;line-height:.8;font-weight:200;font-stretch:104%;letter-spacing:-.055em;margin-left:-14px}
+.temp{font-size:270px;line-height:.8;font-weight:200;font-stretch:104%;letter-spacing:-.055em;margin-left:-14px}
 .temp sup{font-size:.42em;vertical-align:.95em;margin-left:.02em;font-weight:250}
 .hl{margin-top:22px;display:grid;gap:10px;font-size:34px;font-stretch:90%}
 .hl span{display:flex;gap:16px;align-items:baseline}
 .hl i{font-style:normal;color:var(--quiet);font-size:26px;font-stretch:84%;width:1.6em}
-.say{margin:44px 0 0;font-size:80px;line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.028em;max-width:12.5ch}
+.say{margin:40px 0 0;font-size:72px;line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.028em;max-width:12.5ch}
 
 /* Notable: only what's worth saying, with when */
 .notes{list-style:none;margin:44px 0 0;padding:0;display:grid;gap:18px;font-size:36px;line-height:1.2;font-stretch:92%}
@@ -48,20 +48,20 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 .notes span{color:var(--quiet)}
 
 /* Today, hour by hour */
-.today{margin-top:auto;padding-top:48px}
-.today h2,.days h2{margin:0 0 18px;font-size:26px;font-weight:560;font-stretch:84%;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet)}
-.today svg{display:block;width:100%;height:210px;overflow:visible}
+.today{margin-top:44px}
+.today h2,.days h2,.inside h2{margin:0 0 18px;font-size:26px;font-weight:560;font-stretch:84%;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet)}
+.today svg{display:block;width:100%;height:260px;overflow:visible}
 .axis{position:relative;height:30px;font-size:24px;font-stretch:80%;color:var(--quiet);margin-top:12px}
 .axis span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
 .axis span:first-child{transform:none}
 
 /* Three days */
-.days{margin-top:52px}
+.days{margin-top:auto;padding-top:40px}
 .cols{display:grid;grid-template-columns:repeat(3,1fr);border-top:1.5px solid var(--hair)}
 .col{padding:24px 0 0}
 .col + .col{padding-left:34px;border-left:1.5px solid var(--hair)}
 .col h3{margin:0;font-size:34px;font-weight:560;font-stretch:90%}
-.col img{width:96px;height:96px;margin:6px 0 0 -14px;display:block}
+.col img{width:80px;height:80px;margin:6px 0 0 -14px;display:block}
 .col .t{font-size:56px;font-weight:300;font-stretch:100%;letter-spacing:-.03em;line-height:1}
 .col .t span{color:var(--quiet);font-size:40px;margin-left:.25em}
 .col p{margin:14px 0 0;font-size:28px;line-height:1.3;font-stretch:88%;color:var(--quiet);max-width:12em}
@@ -70,6 +70,24 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 /* The house, in one quiet line */
 .house{margin-top:44px;padding-top:24px;border-top:1.5px solid var(--hair);display:flex;flex-wrap:wrap;gap:12px 40px;font-size:30px;font-stretch:88%;color:var(--quiet)}
 .house b{color:var(--ink);font-weight:520}
+
+/* The day, together */
+.key{display:flex;flex-wrap:wrap;gap:8px 30px;margin-top:10px;font-size:24px;font-stretch:82%;color:var(--quiet)}
+.key i{display:inline-block;width:26px;height:0;vertical-align:.32em;margin-right:10px}
+.key .kt{border-top:3.5px solid var(--ink)}
+.key .ks{border-top:3px dotted #FFD27A}
+.key .kl{height:10px;vertical-align:0;background:linear-gradient(90deg,#ffb46b,#fff1e0,#dfe8ff);opacity:.85;border-radius:2px}
+.key .kr{width:8px;height:16px;vertical-align:-1px;background:var(--ink);opacity:.5;border-radius:2px}
+
+/* Inside */
+.inside{margin-top:40px;padding-top:22px;border-top:1.5px solid var(--hair)}
+.inside h2{margin:0 0 10px;font-size:26px;font-weight:560;font-stretch:84%;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet)}
+.in{display:flex;align-items:baseline;gap:36px}
+.in .n{font-size:72px;font-weight:280;letter-spacing:-.03em;line-height:1}
+.in .n small{font-size:.55em;margin-left:.04em}
+.in .q{color:var(--ink)}
+.in-notes{margin-left:auto;display:flex;gap:28px;font-size:30px;font-stretch:88%;color:var(--quiet)}
+.in-notes b{color:var(--ink);font-weight:520}
 </style>
 </head>
 <body>
@@ -89,24 +107,55 @@ const SKY = {
 };
 const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+/* Colour temperature to sRGB (Tanner Helland's fit), so the house's light is drawn in its own colour */
+function kRGB(k){
+  const t=k/100; let r,g,b;
+  if (t<=66){ r=255; g=99.4708025861*Math.log(t)-161.1195681661; }
+  else { r=329.698727446*Math.pow(t-60,-0.1332047592); g=288.1221695283*Math.pow(t-60,-0.0755148492); }
+  b = t>=66 ? 255 : t<=19 ? 0 : 138.5177312231*Math.log(t-10)-305.0447927307;
+  const c=v=>Math.max(0,Math.min(255,Math.round(v)));
+  return `rgb(${c(r)} ${c(g)} ${c(b)})`;
+}
+function smooth(pts){
+  let d=`M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for(let i=1;i<pts.length;i++){ const [x0,y0]=pts[i-1],[x1,y1]=pts[i],cx=(x0+x1)/2; d+=` C${cx.toFixed(1)} ${y0.toFixed(1)} ${cx.toFixed(1)} ${y1.toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)}`; }
+  return d;
+}
+/* The day on one clock: outside temperature (the line), the sun's height (dotted gold),
+   the house's light (a soft band in its own colour) and the chance of rain (ticks at the foot) */
 function chart(hours, nowIdx){
-  // hours: [{h:"6a", t:48, p:44}] — temperature as a line, chance of rain as soft bars
-  const W=904, H=210, n=hours.length, x=i=>i/(n-1)*W;
-  const ts=hours.map(h=>h.t), lo=Math.min(...ts)-2, hi=Math.max(...ts)+2, y=t=>40+(1-(t-lo)/(hi-lo))*(H-120);
+  const W=904, H=260, base=H-34, n=hours.length, x=i=>i/(n-1)*W;
+  const ts=hours.map(h=>h.t), lo=Math.min(...ts)-2, hi=Math.max(...ts)+2, y=t=>44+(1-(t-lo)/(hi-lo))*(base-150);
   const pts=hours.map((h,i)=>[x(i),y(h.t)]);
-  let d=`M${pts[0][0]} ${pts[0][1]}`;
-  for(let i=1;i<n;i++){ const [x0,y0]=pts[i-1],[x1,y1]=pts[i],cx=(x0+x1)/2; d+=` C${cx} ${y0} ${cx} ${y1} ${x1} ${y1}`; }
-  const bw=W/n*.56;
-  const bars=hours.map((h,i)=>h.p>=10?`<rect x="${(x(i)-bw/2).toFixed(1)}" y="${(H-h.p/100*64).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h.p/100*64).toFixed(1)}" rx="3" fill="var(--ink)" opacity="${(.18+h.p/100*.5).toFixed(2)}"/>`:"").join("");
+  // house light: level as height, kelvin as colour
+  let light="";
+  if (hours.some(h=>h.light!=null)){
+    const lp=hours.map((h,i)=>[x(i), base-((h.light||0)/100)*(base-70)]);
+    const stops=hours.map((h,i)=>`<stop offset="${(i/(n-1)).toFixed(3)}" stop-color="${kRGB(h.k||2700)}"/>`).join("");
+    light=`<defs><linearGradient id="lk" gradientUnits="userSpaceOnUse" x1="0" x2="${W}" y1="0" y2="0">${stops}</linearGradient></defs>
+      <path d="${smooth(lp)}L${W} ${base}L0 ${base}Z" fill="url(#lk)" opacity=".22"/>
+      <path d="${smooth(lp)}" fill="none" stroke="url(#lk)" stroke-width="3" opacity=".95"/>`;
+  }
+  // the sun: height above the horizon, on a fixed 0–70° scale so the seasons read true
+  let sun="";
+  const sy=e=>base-Math.max(0,e)/70*(base-40);
+  const up=hours.map((h,i)=>[i,h.sun]).filter(([,e])=>e!=null&&e>-1);
+  if (up.length>1) sun=`<path d="${smooth(up.map(([i,e])=>[x(i),sy(e)]))}" fill="none" stroke="#FFD27A" stroke-width="3" stroke-dasharray="0.5 9" stroke-linecap="round"/>`;
+  const sunNow = hours[nowIdx].sun>0 ? `<circle cx="${x(nowIdx)}" cy="${sy(hours[nowIdx].sun)}" r="13" fill="#FFD27A"/><circle cx="${x(nowIdx)}" cy="${sy(hours[nowIdx].sun)}" r="30" fill="#FFD27A" opacity=".25"/>` : "";
+  // rain: ticks along the foot
+  const bw=W/n*.5;
+  const bars=hours.map((h,i)=>h.p>=10?`<rect x="${(x(i)-bw/2).toFixed(1)}" y="${(H-h.p/100*30).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h.p/100*30).toFixed(1)}" rx="2" fill="var(--ink)" opacity="${(.2+h.p/100*.5).toFixed(2)}"/>`:"").join("");
   const hiI=ts.indexOf(Math.max(...ts)), lab=(i,txt,dy)=>`<text x="${x(i)}" y="${y(hours[i].t)+dy}" text-anchor="middle" font-size="30" font-weight="520" fill="var(--ink)">${txt}</text>`;
   const [nx,ny]=pts[nowIdx];
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-    ${bars}
-    <path d="${d}" fill="none" stroke="var(--ink)" stroke-width="3.5" stroke-linecap="round"/>
+    ${light}${sun}${bars}
+    <line x1="0" x2="${W}" y1="${base}" y2="${base}" stroke="var(--hair)" stroke-width="1.5"/>
+    <path d="${smooth(pts)}" fill="none" stroke="var(--ink)" stroke-width="3.5" stroke-linecap="round"/>
     ${lab(hiI,hours[hiI].t+"°",-22)}
     ${hiI!==nowIdx?`<text x="${x(nowIdx)}" y="${y(hours[nowIdx].t)-38}" text-anchor="${nowIdx===0?"start":"middle"}" font-size="30" font-weight="520" fill="var(--ink)">${hours[nowIdx].t}°</text>`:""}
     ${hiI!==n-1?`<text x="${W}" y="${y(hours[n-1].t)-22}" text-anchor="end" font-size="30" font-weight="440" fill="var(--ink)" opacity=".55">${hours[n-1].t}°</text>`:""}
     <line x1="${nx}" x2="${nx}" y1="${ny}" y2="${H}" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="2 6"/>
+    ${sunNow}
     <circle cx="${nx}" cy="${ny}" r="24" fill="var(--glow)" opacity=".35"/><circle cx="${nx}" cy="${ny}" r="10" fill="var(--ink)"/>
   </svg>`;
 }
@@ -132,15 +181,18 @@ function render(B){
     <header class="mast"><span><b>${esc(B.day)}</b> &nbsp;${esc(B.date)}${B.moon?`<span class="moon" title="${B.moon.pct}% lit">${moonSvg(B.moon.f)}${esc(B.moon.name)}</span>`:""}</span><span>${esc(B.place)} · ${esc(B.asof)}</span></header>
     <section class="now">
       <div class="temp">${B.temp}<sup>°</sup></div>
-      <div class="hl"><span><i>H</i>${B.high}°</span><span><i>L</i>${B.low}°</span>${B.humidity!=null?`<span><i>RH</i>${B.humidity}%</span>`:""}</div>
+      <div class="hl"><span><i>H</i>${B.high}°</span><span><i>L</i>${B.low}°</span>${B.humidity!=null?`<span><i>RH</i>${B.humidity}%</span>`:""}${B.pollen&&B.pollen.rating?`<span><i>Pollen</i>${esc(B.pollen.rating.toLowerCase())}</span>`:""}</div>
     </section>
     <h1 class="say">${esc(B.say)}</h1>
     <ul class="notes">${B.notes.map(n=>`<li><div><b>${esc(n.what)}</b>${n.when?` <span>${esc(n.when)}</span>`:""}</div></li>`).join("")}</ul>
-    <section class="today"><h2>${esc(B.label || "Today")}</h2>${chart(B.hours, B.nowIdx)}<div class="axis">${axis}</div></section>
     <section class="days"><h2>Next three days</h2><div class="cols">${B.days.map(d=>`
       <div class="col"><h3>${esc(d.name)}</h3><img alt="" src="wx/${esc(d.icon)}.svg">
         <div class="t">${d.hi}°<span>${d.lo}°</span></div><p>${d.note}</p></div>`).join("")}</div></section>
-    <footer class="house">${B.house.map(h=>`<span>${h}</span>`).join("")}</footer>`;
+    <section class="today"><h2>${esc(B.label || "Today")}</h2>${chart(B.hours, B.nowIdx)}<div class="axis">${axis}</div>
+      <div class="key"><span><i class="kt"></i>Outside</span><span><i class="ks"></i>The sun</span><span><i class="kl"></i>The house's light</span><span><i class="kr"></i>Chance of rain</span></div></section>
+    ${B.inside?`<section class="inside"><h2>Inside</h2><div class="in">
+      ${B.inside.t!=null?`<div class="n">${B.inside.t}°</div>`:""}${B.inside.rh!=null?`<div class="n q">${B.inside.rh}<small>%</small></div>`:""}
+      <div class="in-notes">${B.inside.notes.map(x=>`<span>${x}</span>`).join("")}</div></div></section>`:""}`;
 }
 if (window.BOARD) render(window.BOARD);
 else fetch("api/board").then(r=>r.json()).then(render);
