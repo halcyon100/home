@@ -130,16 +130,36 @@ def _dst_note(now: datetime, tz: ZoneInfo) -> dict | None:
     return None
 
 
+NIGHT_WORD = {"sunny": "Clear", "clear-night": "Clear", "partlycloudy": "Partly cloudy", "cloudy": "Overcast",
+              "rainy": "Wet", "pouring": "Pouring", "lightning": "Stormy", "lightning-rainy": "Stormy", "hail": "Hail",
+              "snowy": "Snowy", "snowy-rainy": "Sleet", "fog": "Foggy", "windy": "Windy", "windy-variant": "Windy",
+              "exceptional": "Unsettled"}
+
+
+def light_of(now: datetime, sunrise: datetime | None, sunset: datetime | None) -> str:
+    """night, dawn or day. Night runs from half an hour after sunset to 45 minutes before sunrise."""
+    if sunset and now >= sunset + timedelta(minutes=30):
+        return "night"
+    if sunrise and now < sunrise - timedelta(minutes=45):
+        return "night"
+    if sunrise and now < sunrise + timedelta(minutes=20):
+        return "dawn"
+    return "day"
+
+
 def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list, sunrise: datetime | None,
-          pollen: dict | None, house: list[str], place: str = "") -> dict:
+          pollen: dict | None, house: list[str], place: str = "", sunset: datetime | None = None) -> dict:
     """Everything the board draws. `current` is the weather entity's state; hourly/daily are NWS forecasts."""
     now = now.astimezone(tz)
+    light = light_of(now, sunrise, sunset)
     cond = current.get("state") or "cloudy"
     attrs = current.get("attributes") or {}
     hrs = _hours(hourly, tz)
     hour0 = now.replace(minute=0, second=0, microsecond=0)
     midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     today = [h for h in hrs if hour0 <= h["dt"] <= midnight]
+    if light == "night":   # after dark, the line runs through the night to the morning
+        today = [h for h in hrs if hour0 <= h["dt"] <= hour0 + timedelta(hours=12)]
     temp = attrs.get("temperature")
     if temp is None and today:
         temp = today[0].get("temperature")
@@ -240,11 +260,15 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
         dry = days and "dry" in days[0]["note"]
         notes.append({"what": f"{word} tomorrow", "when": f"{tomorrow_hi}°{' and dry' if dry else ''}"})
 
-    # One sentence for the morning
+    # One sentence
     base = WORD.get(cond, "Grey")
     if cond in ("rainy", "cloudy", "fog") and (attrs.get("humidity") or 0) >= 85:
         base = "Grey and damp"
-    if rain:
+    if light == "night":
+        base = NIGHT_WORD.get(cond, "Overcast") + " tonight"
+    if light == "night" and not rain:
+        say = f"{base}, down to {low}°." if low is not None else f"{base}."
+    elif rain:
         clause = rain[1].split(",")[0]
         if clause.startswith("until"):
             tail = f"with {'showers on and off' if rain[0].startswith('Showers') else 'rain'} {clause.replace(' pm', '').replace(' am', '')}"
@@ -262,16 +286,18 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
               "t": round(h["temperature"]), "p": round(h.get("precipitation_probability") or 0)}
              for i, h in enumerate(today) if h.get("temperature") is not None]
 
-    light = "dawn" if sunrise and now < sunrise.astimezone(tz) + timedelta(minutes=20) else "morning"
     sky = SKY_OF.get(cond, "overcast")
-    image = f"sky/{sky}-{light}.jpg"
-    if not (SKY_DIR / f"{sky}-{light}.jpg").exists():
-        image = f"sky/{sky}-morning.jpg"
+    name = {"day": "morning"}.get(light, light)
+    image = f"sky/{sky}-{name}.jpg"
+    night_photo = light == "night" and (SKY_DIR / f"{sky}-night.jpg").exists()
+    if not (SKY_DIR / f"{sky}-{name}.jpg").exists():
+        image = f"sky/{sky}-morning.jpg"   # no photo for this light yet: the day one, dimmed at night
     return {
         "day": now.strftime("%A"), "date": now.strftime("%B ") + str(now.day), "place": place,
         "asof": clock(now, exact=True), "temp": round(temp) if temp is not None else "–",
         "high": high, "low": low, "say": say, "notes": notes[:4], "hours": chart, "nowIdx": 0,
         "days": days, "house": house, "sky": sky, "image": image,
+        "light": light, "dim": light == "night" and not night_photo, "label": "Tonight" if light == "night" else "Today",
     }
 
 
@@ -370,15 +396,16 @@ class Board:
         except (TypeError, ValueError):
             inside = None
         sun = by.get("sun.sun", {}).get("attributes", {})
-        sunrise = None
+        sunrise = sunset = None
         if day and day.get("sunrise"):
             sunrise = datetime.fromisoformat(day["sunrise"])
+            sunset = datetime.fromisoformat(day["sunset"]) if day.get("sunset") else None
         elif sun.get("next_rising"):
             sunrise = datetime.fromisoformat(sun["next_rising"])
         place = cfg.get("location_name") or ""
         place = h.opts.get("board_place") or ("Colgate" if place in ("", "Home") else place)
         return build(datetime.now(self.tz), self.tz, current, hourly, daily, sunrise, pollen,
-                     house_line(inside, day, pollen), place)
+                     house_line(inside, day, pollen), place, sunset)
 
     # ------------------------------------------------------------ picture
     async def render(self) -> bytes:

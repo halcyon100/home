@@ -109,8 +109,11 @@ function chart(hours, nowIdx){
   </svg>`;
 }
 
+/* After dark with no night photo yet: the day's sky, dimmed and cooled, with light type */
+const DIM = {ink:"light", veil:"linear-gradient(180deg,rgb(6 10 20 / .35),rgb(6 10 20 / .25) 45%,rgb(6 10 20 / .6))"};
 function render(B){
-  const s = SKY[B.sky] || SKY.overcast;
+  const s = B.dim ? DIM : (SKY[B.sky] || SKY.overcast);
+  document.getElementById("sky").style.filter = B.dim ? "brightness(.38) saturate(.55) hue-rotate(12deg)" : "";
   document.documentElement.dataset.ink = s.ink;
   document.getElementById("sky").style.backgroundImage = `url("${B.image}")`;
   document.getElementById("veil").style.background = s.veil;
@@ -124,7 +127,7 @@ function render(B){
     </section>
     <h1 class="say">${esc(B.say)}</h1>
     <ul class="notes">${B.notes.map(n=>`<li><div><b>${esc(n.what)}</b>${n.when?` <span>${esc(n.when)}</span>`:""}</div></li>`).join("")}</ul>
-    <section class="today"><h2>Today</h2>${chart(B.hours, B.nowIdx)}<div class="axis">${axis}</div></section>
+    <section class="today"><h2>${esc(B.label || "Today")}</h2>${chart(B.hours, B.nowIdx)}<div class="axis">${axis}</div></section>
     <section class="days"><h2>Next three days</h2><div class="cols">${B.days.map(d=>`
       <div class="col"><h3>${esc(d.name)}</h3><img alt="" src="wx/${esc(d.icon)}.svg">
         <div class="t">${d.hi}°<span>${d.lo}°</span></div><p>${d.note}</p></div>`).join("")}</div></section>
