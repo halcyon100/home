@@ -113,3 +113,10 @@ def test_moon_phase():
     from board import moon
     m = moon(datetime(2026, 10, 30, 20, tzinfo=TZ))
     assert m["name"] in ("Waning gibbous", "Full moon") and m["pct"] > 60
+
+
+def test_moon_arc_rises_late_and_peaks_before_dawn_this_week():
+    from board import moon_elevation
+    at = lambda h: datetime(2026, 10, 31, h, tzinfo=TZ)  # noqa: E731
+    assert moon_elevation(at(18), 43.19, -88.21) < 0      # waning gibbous: not up at dusk
+    assert moon_elevation(at(6), 43.19, -88.21) > 50      # high before sunrise
