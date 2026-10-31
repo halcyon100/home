@@ -536,7 +536,7 @@ function render(){
     const held = L.filter(x=>x.held);
     const row = (a,b,live) => `<dt>${a}</dt><dd${live?' class="live"':""}>${b}</dd>`;
     $("status").innerHTML =
-      row("Lights on", `${on.length} of ${L.length}`, on.length>0) +
+      row("Lights on", s.lights ? `${s.lights.on} of ${s.lights.of}` : `${on.length} of ${L.length}`, (s.lights ? s.lights.on : on.length)>0) +
       row("Set by hand", held.length ? held.map(x=>esc(x.name)).join(", ") : "None");
     $("daylight").innerHTML = d.zones.map(z=>zoneMeter(z, L.filter(x=>x.zone===z.name))).join("");
   } else $("status").innerHTML = `<dt class="err">Circadian isn't answering.</dt><dd></dd>`;
@@ -690,10 +690,10 @@ function renderHome(){
   const date = new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric"}).format(now);
   $("hmast").innerHTML = `<span><b>${esc(date)}</b></span><span><b>${t(now)}</b></span>`;
   $("hello").innerHTML = `${hourWord(now.getHours())}.${w&&w.temperature!=null?` <span class="q">${Math.round(w.temperature)}°, ${esc((WX_NAME[w.state]||w.state||"").toLowerCase())}.</span>`:""}`;
-  const L = d ? Object.values(d.lights) : [], on = L.filter(x=>x.state==="on").length;
+  const on = S.lights ? S.lights.on : 0;
   const tiles = [];
   tiles.push(`<button class="tile light" data-view="now"><b>Light</b><div><div class="v">${CUR?esc(kName(CUR.k)):"–"}</div><em>${CUR?kTxt(CUR.k)+" · ":""}${d&&!d.enabled?"Natural light paused":d&&d.boost.on?"Bright House on":"Natural light on"}</em></div></button>`);
-  tiles.push(`<button class="tile" data-view="devices"><b>Devices</b><div><div class="v">${on} on</div><em>Lights, curtains and shades</em></div></button>`);
+  tiles.push(`<button class="tile" data-view="devices"><b>Devices</b><div><div class="v">${on} on</div><em>${S.lights?`of ${S.lights.of} lights · `:""}curtains and shades</em></div></button>`);
   const m = H && H.music, p = m && m.playing && m.playing[0];
   if (p) tiles.push(`<button class="tile media" data-app="/3dd8a0cc_music">${p.art?`<span class="bg" style="background-image:url('${esc(p.art)}')"></span>`:""}<b>Music</b><div><div class="v">${esc(p.line_in?"The turntable":p.tv?"TV sound":p.title||"Playing")}</div><em>${esc(p.artist?p.artist+" · ":"")}${esc(p.rooms.join(", "))}${m.playing.length>1?` · +${m.playing.length-1} more`:""}</em></div></button>`);
   else tiles.push(`<button class="tile" data-app="/3dd8a0cc_music"><b>Music</b><div><div class="v">Quiet</div><em>${m&&m.ok?"Nothing playing":"Rooms, the turntable, new records"}</em></div></button>`);

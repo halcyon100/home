@@ -419,17 +419,17 @@ def observed(nws: dict | None, model: dict | None) -> dict:
     return {"state": nws["state"], "attributes": attrs}
 
 
-def inside_block(inside: float | None, damp: float | None, day: dict | None) -> dict:
+def inside_block(inside: float | None, damp: float | None, day: dict | None, lights_on: int | None = None) -> dict:
     notes = []
     if day:
-        lights = [x for x in (day.get("lights") or {}).values() if x.get("state") == "on"]
         if not day.get("enabled", True):
             notes.append("Natural light paused")
         elif (day.get("boost") or {}).get("on"):
             notes.append("Bright House on")
         else:
             notes.append("Natural light on")
-        notes.append(f"<b>{len(lights)}</b> light{'s' if len(lights) != 1 else ''} on")
+    if lights_on is not None:
+        notes.append(f"<b>{lights_on}</b> light{'s' if lights_on != 1 else ''} on")
     return {"t": round(inside) if inside is not None else None, "rh": round(damp) if damp is not None else None,
             "notes": notes}
 
@@ -539,7 +539,7 @@ class Board:
             hl = house_light(day, at)
             if hl:
                 p["light"], p["k"] = hl
-        b["inside"] = inside_block(inside, damp, day)
+        b["inside"] = inside_block(inside, damp, day, h.lights_on(by)["on"])
         b["pollen"] = pollen
         return b
 
