@@ -296,7 +296,7 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
             tail = f"{'showers' if rain[0] != 'Rain likely' else 'rain'} from {clause.split(' – ')[0]}"
         say = f"{base}, {tail}."
     elif high is not None:
-        say = f"{base}, dry all day, up to {high}°."
+        say = f"{base}, up to {high}°." if "damp" in base else f"{base}, dry all day, up to {high}°."
     else:
         say = f"{base}."
 
