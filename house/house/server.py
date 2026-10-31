@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from board import Board, observed
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.13.2"
+VERSION = "0.14.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -250,6 +251,42 @@ class House:
             "activity": log_rows,
         }
 
+    async def _json(self, url: str, timeout: float = 4):
+        try:
+            async with self.session.get(url, timeout=aiohttp.ClientTimeout(total=timeout)) as r:
+                r.raise_for_status()
+                return await r.json()
+        except Exception as ex:
+            log.info("Home: %s didn't answer (%s)", url, ex)
+            return None
+
+    async def home(self):
+        """What the other apps are doing, for their tiles on Home."""
+        music_url = self.opts.get("music_url", "http://3dd8a0cc-music:8097")
+        frame_url = self.opts.get("frame_url", "http://172.30.32.1:8800").rstrip("/")
+        music, frame = await asyncio.gather(self._json(f"{music_url}/api/now"), self._json(f"{frame_url}/api/status"))
+        playing = []
+        for r in (music or {}).get("rooms", []):
+            if r.get("state") != "playing" or (r.get("group") and not r.get("leader")):
+                continue
+            playing.append({"rooms": [r["name"]] + [g for g in r.get("group", []) if g != r["name"]],
+                            "title": r.get("title"), "artist": r.get("artist"), "art": r.get("art"),
+                            "tv": r.get("tv"), "line_in": r.get("line_in")})
+        out = {"music": {"ok": music is not None, "playing": playing}, "frame": None}
+        if frame:
+            out["frame"] = {"power": frame.get("power"), "current": frame.get("current"),
+                            "board": bool((frame.get("board") or {}).get("showing"))}
+        return out
+
+    async def frame_thumb(self, cid: str) -> bytes | None:
+        frame_url = self.opts.get("frame_url", "http://172.30.32.1:8800").rstrip("/")
+        try:
+            async with self.session.get(f"{frame_url}/thumb/{cid}", timeout=aiohttp.ClientTimeout(total=8)) as r:
+                r.raise_for_status()
+                return await r.read()
+        except Exception:
+            return None
+
     async def do(self, body: dict):
         entity, op = body.get("entity"), body.get("op")
         sc = {s["entity"]: s for s in self.shortcuts}
@@ -311,6 +348,18 @@ def make_app(house: House) -> web.Application:
         await house.do(await req.json())
         return web.json_response({"ok": True})
 
+    async def api_home(_req):
+        return web.json_response(await house.home())
+
+    async def frame_thumb(req):
+        cid = req.match_info["cid"]
+        if not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", cid):
+            raise web.HTTPBadRequest()
+        data = await house.frame_thumb(cid)
+        if data is None:
+            raise web.HTTPNotFound()
+        return web.Response(body=data, content_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
     async def board_page(_req):
         return web.FileResponse(WWW / "board.html", headers={"Cache-Control": "no-cache"})
 
@@ -350,6 +399,8 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/board", board_page)
     app.router.add_get("/board.jpg", board_jpeg)
     app.router.add_get("/api/board", api_board)
+    app.router.add_get("/api/home", api_home)
+    app.router.add_get("/frame/thumb/{cid}", frame_thumb)
     app.router.add_get("/api/board/status", api_board_status)
     app.router.add_post("/api/board/try", api_board_try)
     return app

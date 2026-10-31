@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>House</title>
-<link rel="stylesheet" href="shared/tokens.css?v=29692212">
-<script src="shared/appnav.js?v=29692212"></script>
+<link rel="stylesheet" href="shared/tokens.css?v=f518cf9c">
+<script src="shared/appnav.js?v=f518cf9c"></script>
 <style>
 
 main{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(12px,1.8vw,22px) var(--gut) 0}
@@ -116,7 +116,7 @@ h2{font-size:var(--s0);font-weight:600;font-stretch:88%;margin:0 0 .9em;letter-s
 h2 span{font-weight:400;color:var(--quiet);margin-left:.5em}
 
 .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.act{appearance:none;border:1px solid var(--hair);background:transparent;border-radius:3px;text-align:left;padding:.85em .9em .8em;min-height:82px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;gap:.4em;transition:border-color .2s,background-color .25s}
+.act{appearance:none;border:1px solid var(--hair);background:transparent;border-radius:16px;text-align:left;padding:.85em .9em .8em;min-height:82px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;gap:.4em;transition:border-color .2s,background-color .25s}
 .act:hover{border-color:var(--ink)}
 .act strong{font-weight:540;font-stretch:96%;font-size:var(--s1);line-height:1.1;letter-spacing:-.01em}
 .act em{font-style:normal;font-size:var(--s-1);font-stretch:84%;color:var(--quiet)}
@@ -219,17 +219,50 @@ ol.log.big{font-size:var(--s0)}
 .zone p b{color:var(--ink);font-weight:500}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}.sky i,.state .spin{animation:none!important}}
+
+/* Home: a tile per app, what you reach for underneath */
+#v-home .mast{margin-top:.2em}
+.hello{margin:.4em 0 .9em;font-size:var(--s3);font-weight:300;font-stretch:100%;letter-spacing:-.02em;line-height:1.08}
+.hello .q{color:var(--quiet)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (min-width:760px){.tiles{grid-template-columns:repeat(3,1fr);gap:16px}}
+.tile{position:relative;overflow:hidden;appearance:none;border:0;text-align:left;cursor:pointer;color:var(--ink);font:inherit;
+  background:var(--well);border-radius:20px;min-height:156px;padding:16px 16px 15px;display:flex;flex-direction:column;justify-content:space-between;gap:12px;
+  box-shadow:inset 0 0 0 1px var(--hair);transition:transform .18s cubic-bezier(.2,.8,.2,1),box-shadow .2s}
+.tile:active{transform:scale(.96)}
+.tile > *:not(.bg){position:relative;z-index:1}
+.tile b{font-size:var(--s0);font-weight:600;font-stretch:92%;letter-spacing:-.005em}
+.tile .v{font-size:27px;font-weight:300;letter-spacing:-.02em;line-height:1.05;font-stretch:98%}
+.tile .v.vs{font-size:20px;font-weight:380;letter-spacing:-.01em;line-height:1.15}
+.tile em{display:block;margin-top:5px;font-style:normal;font-size:var(--s-1);font-stretch:84%;color:var(--quiet);line-height:1.3}
+.tile .bg{position:absolute;inset:0;background-size:cover;background-position:center;z-index:0}
+.tile .bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgb(0 0 0 / .42),rgb(0 0 0 / .08) 38%,rgb(0 0 0 / .72))}
+.tile.media{color:#fff;box-shadow:none}
+.tile.media em{color:rgb(255 255 255 / .8)}
+.tile.light{background:radial-gradient(130% 100% at 100% 0%,color-mix(in srgb,var(--light) 62%,transparent),var(--well) 72%)}
+.hfield{display:grid;gap:clamp(30px,4vw,48px) clamp(28px,4vw,56px);margin-top:clamp(34px,5vw,56px);grid-template-columns:1fr}
+@media (min-width:760px){.hfield{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){.tile{transition:none}}
 </style>
 </head>
 <body>
-<app-bar app="house"><nav slot="tabs" class="app-tabs" role="tablist" aria-label="House">
-  <button role="tab" data-v="now" aria-selected="true">Now</button>
+<app-bar app="house" home home-title="Home" id="bar"><nav slot="tabs" class="app-tabs" role="tablist" aria-label="House">
+  <button role="tab" data-v="now" aria-selected="true">Light</button>
   <button role="tab" data-v="devices" aria-selected="false">Devices</button>
   <button role="tab" data-v="activity" aria-selected="false">Activity</button>
 </nav></app-bar>
 <div class="sky" aria-hidden="true"><i class="glow"></i><i class="stars"></i><i class="cloud"></i><i class="grey"></i><i class="fog"></i><i class="rain"></i><i class="snow"></i><i class="flash"></i></div>
 <main>
-<section id="v-now" role="tabpanel" aria-label="Now">
+<section id="v-home" aria-label="Home">
+  <header class="mast" id="hmast"></header>
+  <h1 class="hello" id="hello">&nbsp;</h1>
+  <nav class="tiles" id="tiles" aria-label="Apps"></nav>
+  <section class="hfield">
+    <div><h2>Shortcuts</h2><div class="acts" id="acts"></div></div>
+    <div class="pinned" id="pinned-wrap"><h2>Pinned</h2><div id="pinned"></div></div>
+  </section>
+</section>
+<section id="v-now" role="tabpanel" aria-label="Light" hidden>
   <header class="mast" id="mast"></header>
   <div class="hero">
     <div><h1 class="say" id="say" aria-live="polite">Reading the house</h1><ul class="state" id="state"></ul></div>
@@ -243,16 +276,8 @@ ol.log.big{font-size:var(--s0)}
     <figcaption class="legend" id="legend"></figcaption>
   </figure>
   <section class="field">
-    <div>
-      <h2>Shortcuts</h2>
-      <div class="acts" id="acts"></div>
-      <div class="pinned sub" id="pinned-wrap"><h2>Pinned</h2><div id="pinned"></div></div>
-    </div>
-    <div>
-      <h2>Daylight</h2>
-      <div id="daylight"></div>
-      <div class="sub"><h2>Light right now</h2><dl id="status"></dl></div>
-    </div>
+    <div><h2>Daylight</h2><div id="daylight"></div></div>
+    <div><h2>Light right now</h2><dl id="status"></dl></div>
   </section>
 </section>
 <section id="v-devices" role="tabpanel" aria-label="Devices" hidden>
@@ -271,7 +296,7 @@ ol.log.big{font-size:var(--s0)}
 "use strict";
 const $ = id => document.getElementById(id);
 const API = new URLSearchParams(location.search).has("mock") ? "mock_state.json" : "api/state";
-let S = null, scrub = null, armedFor = null, armTimer = null;
+let S = null, CUR = null, scrub = null, armedFor = null, armTimer = null;
 
 /* Colour temperature to sRGB (Tanner Helland's fit), for drawing the light as it looks. */
 function kRGB(k){
@@ -419,6 +444,7 @@ function hero(eff, si, nowI){
   }
   $("say").innerHTML = `${kName(p.k)}, <span class="k">${kTxt(p.k)}</span>`;
   document.documentElement.style.setProperty("--light", css(kRGB(p.k)));
+  CUR = {k: p.k, b: p.b};
   const now = new Date(d.now), rows = [];
   // The mode
   const held = Object.values(d.lights).filter(x=>x.state==="on" && x.held);
@@ -515,6 +541,7 @@ function render(){
   }).join("") || `<dt class="err">No motion sensors chosen.</dt><dd></dd>`;
 
   $("alog").innerHTML = logRows(s.activity);
+  renderHome();
 }
 
 /* One daylight zone: where the sensor reads against the two thresholds, and what it's doing. */
@@ -623,15 +650,46 @@ document.addEventListener("change",e=>{
   if (r) act({entity:r.dataset.l, op:"level", value:+r.value}, r, loadDevices);
 });
 
-/* Views */
-let view = "now";
+/* Views: Home (the grid of apps) and House's own three */
+let view = "home";
 function show(v){
   view = v;
   document.querySelectorAll(".app-tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.v===v));
-  ["now","devices","activity"].forEach(x=>$("v-"+x).hidden = x!==v);
+  ["home","now","devices","activity"].forEach(x=>$("v-"+x).hidden = x!==v);
+  $("bar").toggleAttribute("home", v==="home");
   try{ sessionStorage.setItem("house-view", v); }catch(e){}
   if (v==="devices") loadDevices();
+  if (v==="home") loadHome();
   window.scrollTo(0,0);
+}
+$("bar").addEventListener("back", e=>{ if (view!=="home"){ e.preventDefault(); show("home"); } });
+
+/* Home: a tile per app, each saying what it's doing now */
+let H = null;
+async function loadHome(){
+  try{ const r = await fetch(API.startsWith("mock") ? "mock_home.json" : "api/home",{cache:"no-store"}); H = r.ok ? await r.json() : null; }catch(e){ H = null; }
+  renderHome();
+}
+const hourWord = h => h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+function renderHome(){
+  if (!S) return;
+  const now = new Date(S.now), d = S.circadian, w = S.weather;
+  const date = new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric"}).format(now);
+  $("hmast").innerHTML = `<span><b>${esc(date)}</b></span><span><b>${t(now)}</b></span>`;
+  $("hello").innerHTML = `${hourWord(now.getHours())}.${w&&w.temperature!=null?` <span class="q">${Math.round(w.temperature)}°, ${esc((WX_NAME[w.state]||w.state||"").toLowerCase())}.</span>`:""}`;
+  const L = d ? Object.values(d.lights) : [], on = L.filter(x=>x.state==="on").length;
+  const tiles = [];
+  tiles.push(`<button class="tile light" data-view="now"><b>Light</b><div><div class="v">${CUR?esc(kName(CUR.k)):"–"}</div><em>${CUR?kTxt(CUR.k)+" · ":""}${d&&!d.enabled?"Natural light paused":d&&d.boost.on?"Bright House on":"Natural light on"}</em></div></button>`);
+  tiles.push(`<button class="tile" data-view="devices"><b>Devices</b><div><div class="v">${on} on</div><em>Lights, curtains and shades</em></div></button>`);
+  const m = H && H.music, p = m && m.playing && m.playing[0];
+  if (p) tiles.push(`<button class="tile media" data-app="/3dd8a0cc_music">${p.art?`<span class="bg" style="background-image:url('${esc(p.art)}')"></span>`:""}<b>Music</b><div><div class="v">${esc(p.line_in?"The turntable":p.tv?"TV sound":p.title||"Playing")}</div><em>${esc(p.artist?p.artist+" · ":"")}${esc(p.rooms.join(", "))}${m.playing.length>1?` · +${m.playing.length-1} more`:""}</em></div></button>`);
+  else tiles.push(`<button class="tile" data-app="/3dd8a0cc_music"><b>Music</b><div><div class="v">Quiet</div><em>${m&&m.ok?"Nothing playing":"Rooms, the turntable, new records"}</em></div></button>`);
+  const f = H && H.frame;
+  tiles.push(`<button class="tile${f&&f.current&&!f.board?" media":""}" data-app="/3dd8a0cc_frame">${f&&f.current&&!f.board?`<span class="bg" style="background-image:url('frame/thumb/${encodeURIComponent(f.current)}')"></span>`:""}<b>Frame</b><div><div class="v">${!f?"Art":f.power!=="on"?"Asleep":f.board?"Kitchen board":"On the wall"}</div><em>${f&&f.board?"Showing the morning board":"Art, collections and schedule"}</em></div></button>`);
+  const a = (S.activity||[])[0];
+  tiles.push(`<button class="tile" data-view="activity"><b>Activity</b><div><div class="v vs">${a?esc(say(a)):"Quiet"}</div><em>${a?ago(a.when):"The last day in the house"}</em></div></button>`);
+  tiles.push(`<button class="tile" data-app="/lovelace/0"><b>Home Assistant</b><div><div class="v vs">Everything else</div><em>Settings, automations, all devices</em></div></button>`);
+  $("tiles").innerHTML = tiles.join("");
 }
 
 function say(a){
@@ -663,6 +721,8 @@ async function act(body, el, after){
 }
 function refresh(){ load(); if (view==="devices" || pins.length) loadDevices(); }
 document.addEventListener("click",e=>{
+  const tile = e.target.closest(".tile");
+  if (tile){ if (tile.dataset.view) show(tile.dataset.view); else if (tile.dataset.app && window.appGo) window.appGo(tile.dataset.app); return; }
   const tab = e.target.closest(".app-tabs button, [data-go]");
   if (tab){ show(tab.dataset.v || tab.dataset.go); return; }
   const pin = e.target.closest("[data-pin]");
@@ -695,7 +755,7 @@ fig.addEventListener("pointerup",ev=>{ if (ev.pointerType!=="mouse"){ setTimeout
 fig.addEventListener("pointercancel",()=>{ scrub=null; if (S) draw(); });   // a scroll that started on the graph
 
 load(); if (pins.length) loadDevices(); renderPinned(); setInterval(refresh,30000);
-try{ const v = sessionStorage.getItem("house-view"); if (v && v!=="now") show(v); }catch(e){}
+loadHome(); setInterval(()=>{ if (view==="home") loadHome(); }, 30000);
 document.addEventListener("visibilitychange",()=>{ if (!document.hidden) refresh(); });
 </script>
 </body>

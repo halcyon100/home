@@ -1,10 +1,15 @@
-/* <app-bar>: the shared top bar for the house's own apps (House, Frame).
+/* <app-bar>: the shared top bar for the house's own apps (House, Music, Frame).
+ *
+ * Home is a grid of the apps (in House). Inside an app the bar has a back button to Home on the
+ * left, the app's own views in the middle, and Talk on the right. On Home there's no back button.
  *
  * One source of truth: this file lives in /shared and is copied into each app by
  * tools/sync-shared. Each app has a test that fails if its copy drifts.
  *
  * Usage:
- *   <app-bar app="house"><nav slot="tabs">...your tabs...</nav></app-bar>
+ *   <app-bar app="music" title="Music"><nav slot="tabs">...your tabs...</nav></app-bar>
+ *   Add the `home` attribute on the Home page itself. The back button fires a cancelable "back"
+ *   event first, so a page with an inner level can handle it; otherwise it goes Home.
  *   <script src="appnav.js"></script>
  *
  * Colours come from the page: --ground, --ink, --quiet, --hair (with fallbacks).
@@ -30,12 +35,7 @@
   } catch (e) {}
   // Inside Home Assistant the page sits in a frame below HA's own header: no notch to clear.
   try { if (window.top !== window) document.documentElement.classList.add("in-ha"); } catch (e) { document.documentElement.classList.add("in-ha"); }
-  const APPS = [
-    {id: "house", name: "House", path: "/3dd8a0cc_house", note: "Today's light, shortcuts, devices, activity"},
-    {id: "music", name: "Music", path: "/3dd8a0cc_music", note: "What's playing, the turntable, new records"},
-    {id: "frame", name: "Frame", path: "/3dd8a0cc_frame", note: "Art on the Frame, collections and its schedule"},
-    {id: "ha", name: "Home Assistant", path: "/lovelace/0", note: "Everything else"},
-  ];
+  const HOME = "/3dd8a0cc_house";
 
   function inHA() {
     try { return window.top !== window && window.top.location.origin === location.origin; }
@@ -51,6 +51,8 @@
       location.href = "http://homeassistant.local:8123" + path;
     }
   }
+
+  window.appGo = go;   // pages use this to open another app
 
   /* ---------- Ask the house: typed or spoken, through Home Assistant's voice pipeline ---------- */
   function hass() {
@@ -141,10 +143,15 @@
   .bar{display:flex;align-items:center;gap:12px;min-height:52px;border-bottom:1px solid var(--hair,color-mix(in srgb,currentColor 18%,transparent))}
   .tabs{flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .tabs::-webkit-scrollbar{display:none}
-  .apps{appearance:none;border:0;background:none;color:inherit;font:inherit;font-stretch:88%;font-weight:520;
-    padding:10px 0 10px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap}
-  .apps svg{width:15px;height:15px}
-  .apps:focus-visible,a:focus-visible,button:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+  .back{appearance:none;flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 16px 0 10px;margin:6px 4px 6px 0;
+    border:0;border-radius:999px;background:var(--well,color-mix(in srgb,currentColor 9%,transparent));color:inherit;cursor:pointer;
+    font:inherit;font-weight:560;font-stretch:90%;font-size:15px;letter-spacing:-.005em;transition:transform .15s ease,background-color .2s}
+  .back svg{width:18px;height:18px}
+  .back:active{transform:scale(.94)}
+  .back[hidden]{display:none}
+  .home-title{flex:1;font-weight:600;font-stretch:92%;font-size:17px;letter-spacing:-.01em;padding:14px 0}
+  .home-title[hidden]{display:none}
+  .back:focus-visible,button:focus-visible{outline:2px solid currentColor;outline-offset:3px}
   dialog{border:0;padding:0;margin:0;max-width:none;max-height:none;width:100%;height:100%;background:transparent;color:inherit}
   dialog::backdrop{background:color-mix(in srgb,var(--ink,#000) 28%,transparent)}
   .sheet{position:fixed;left:0;right:0;bottom:0;background:var(--ground,Canvas);color:var(--ink,CanvasText);
@@ -156,15 +163,11 @@
   @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
   .sheet:focus{outline:none}
   h2{margin:0 0 14px;font-size:15px;font-weight:600;font-stretch:88%}
-  ul{list-style:none;margin:0;padding:0}
-  a{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:12px 0;color:inherit;text-decoration:none;
-    border-top:1px solid var(--hair,color-mix(in srgb,currentColor 15%,transparent))}
-  a b{font-weight:540;font-size:19px;letter-spacing:-.01em}
-  a span{grid-column:1;font-size:13.5px;font-stretch:86%;color:var(--quiet,GrayText)}
-  a i{grid-row:1/3;grid-column:2;align-self:center;font-style:normal;font-size:13px;font-stretch:86%;color:var(--quiet,GrayText)}
-  a:hover b{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:1px}
-  .ask{appearance:none;border:0;background:none;color:inherit;font:inherit;font-stretch:88%;font-weight:520;padding:10px 4px 10px 12px;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap}
-  .ask svg{width:16px;height:16px}
+  .ask{appearance:none;flex:none;border:0;border-radius:999px;height:40px;margin:6px 0 6px 8px;padding:0 16px 0 12px;
+    background:var(--ink,CanvasText);color:var(--ground,Canvas);font:inherit;font-stretch:90%;font-weight:560;font-size:15px;
+    cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;transition:transform .15s ease}
+  .ask:active{transform:scale(.94)}
+  .ask svg{width:17px;height:17px}
   .ask[hidden]{display:none}
   .asksheet{display:flex;flex-direction:column;max-height:min(70vh,560px)}
   @media (min-width:700px){.asksheet{width:420px}}
@@ -188,20 +191,27 @@
   const MIC = `<svg viewBox="0 0 18 18" aria-hidden="true"><rect x="6.2" y="1.5" width="5.6" height="9.5" rx="2.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 8.5a5.5 5.5 0 0 0 11 0M9 14v2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
   const SEND = `<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 15V3.5M4 8l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
+  const BACK = `<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M11.5 3.5 6 9l5.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
   class AppBar extends HTMLElement {
+    static get observedAttributes() { return ["home"]; }
+    attributeChangedCallback() { this.sync(); }
+    sync() {
+      if (!this.shadowRoot) return;
+      const home = this.hasAttribute("home");
+      this.shadowRoot.querySelector(".back").hidden = home;
+      this.shadowRoot.querySelector(".tabs").hidden = home;
+      this.shadowRoot.querySelector(".home-title").hidden = !home;
+    }
     connectedCallback() {
       if (this.shadowRoot) return;
-      const here = this.getAttribute("app");
       const root = this.attachShadow({mode: "open"});
       root.innerHTML = `<style>${css}</style>
-        <div class="bar"><div class="tabs"><slot name="tabs"></slot></div>
-          <button class="ask" aria-label="Talk to the house" ${hass() ? "" : "hidden"}>${MIC}Talk</button>
-          <button class="apps" aria-haspopup="dialog">
-            <svg viewBox="0 0 15 15" aria-hidden="true"><g fill="currentColor">${[2,7.5,13].flatMap(x=>[2,7.5,13].map(y=>`<circle cx="${x}" cy="${y}" r="1.35"/>`)).join("")}</g></svg>
-            All apps</button></div>
-        <dialog aria-label="All apps"><div class="sheet" tabindex="-1"><h2>All apps</h2><ul>
-          ${APPS.map(a => `<li><a href="${a.path}" data-path="${a.path}" ${a.id === here ? 'aria-current="page"' : ""}><b>${a.name}</b><span>${a.note}</span>${a.id === here ? "<i>You're here</i>" : ""}</a></li>`).join("")}
-        </ul></div></dialog>
+        <div class="bar">
+          <button class="back" aria-label="Home">${BACK}<span>Home</span></button>
+          <div class="home-title" hidden>${this.getAttribute("home-title") || "Home"}</div>
+          <div class="tabs"><slot name="tabs"></slot></div>
+          <button class="ask" aria-label="Talk to the house" ${hass() ? "" : "hidden"}>${MIC}Talk</button></div>
         <dialog class="askd" aria-label="Ask the house"><div class="sheet asksheet" tabindex="-1">
           <h2>Ask the house</h2>
           <div class="log" aria-live="polite"><p class="hint">Ask anything, or tell the house what to do.</p></div>
@@ -209,14 +219,12 @@
             <button type="button" class="round mic" aria-label="Speak">${MIC}</button>
             <button type="submit" class="round send" aria-label="Send">${SEND}</button></form>
         </div></dialog>`;
-      const dlg = root.querySelector("dialog");
-      root.querySelector(".apps").addEventListener("click", () => { dlg.showModal(); root.querySelector(".sheet").focus(); });
-      dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
+      root.querySelector(".back").addEventListener("click", () => {
+        const ev = new CustomEvent("back", {cancelable: true});
+        if (this.dispatchEvent(ev)) go(HOME);
+      });
       this.setupAsk(root);
-      root.querySelectorAll("a").forEach(a => a.addEventListener("click", e => {
-        e.preventDefault(); dlg.close();
-        if (a.getAttribute("aria-current") !== "page") go(a.dataset.path);
-      }));
+      this.sync();
     }
   }
   AppBar.prototype.setupAsk = function (root) {
