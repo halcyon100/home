@@ -21,7 +21,7 @@ from board import Board, observed
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.14.1"
+VERSION = "0.14.2"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -104,6 +104,18 @@ class House:
         self.device_ids = ids
         order = {f: i for i, f in enumerate(self.floor_order)}
         return by, [f for f in sorted(floors.values(), key=lambda f: order.get(f["id"], 99)) if f["areas"]]
+
+    def lights_on(self, by: dict) -> dict:
+        """Lights on, counted the way a person switches them: one per control in the rooms list (a
+        group or a Hue-behind-Lutron wrapper counts once), across the whole house. Every screen uses this."""
+        seen, on = set(), 0
+        for room in self.rooms:
+            for spec in room.get("controls", []):
+                e = spec.partition("|")[0].strip()
+                if e in by and e not in self.exclude and e not in seen and e.startswith("light."):
+                    seen.add(e)
+                    on += by[e].get("state") == "on"
+        return {"on": on, "of": len(seen)}
 
     def _covers(self, by):
         def cover(e):
@@ -271,6 +283,7 @@ class House:
             "sun": {"next_rising": sun.get("next_rising"), "next_setting": sun.get("next_setting"),
                     "elevation": sun.get("elevation"), "up": by.get("sun.sun", {}).get("state") == "above_horizon"},
             "circadian": day,
+            "lights": self.lights_on(by),
             "home": {"lat": cfg.get("latitude"), "lon": cfg.get("longitude")},
             "shortcuts": [dict(pick(s["entity"]) or {}, **s) for s in self.shortcuts],
             "shades": [x for x in (pick(e) for e in self.shades) if x],
