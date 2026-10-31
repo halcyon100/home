@@ -17,11 +17,12 @@ import aiohttp
 from aiohttp import web
 
 from board import Board, observed
+from live import Live
 
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.14.2"
+VERSION = "0.15.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -49,6 +50,7 @@ class House:
         self.rooms = opts.get("rooms", []) or []
         self.device_ids: set[str] = set()
         self._cache: dict = {}
+        self.live = Live()
         self._refreshing: set = set()
         self.session: aiohttp.ClientSession | None = None
 
@@ -59,6 +61,12 @@ class House:
         async with self.session.get(f"{HA}{path}", headers=self.hdr(), timeout=aiohttp.ClientTimeout(total=10)) as r:
             r.raise_for_status()
             return await r.json()
+
+    async def all_states(self) -> list[dict]:
+        """Every entity, from the live picture when it's connected, otherwise straight from HA."""
+        if self.live.ready:
+            return self.live.snapshot()
+        return await self.ha_get("/states")
 
     async def ha_call(self, domain: str, service: str, data: dict):
         async with self.session.post(f"{HA}/services/{domain}/{service}", headers=self.hdr(),
@@ -87,7 +95,7 @@ class House:
                 "parts": len(a["entity_id"]) if isinstance(a.get("entity_id"), list) else 1}
 
     async def curated(self):
-        states = await self.ha_get("/states")
+        states = await self.all_states()
         by = {s["entity_id"]: s for s in states}
         floors, ids = {}, set()
         for room in self.rooms:
@@ -129,7 +137,7 @@ class House:
         if self.rooms:
             by, floors = await self.curated()
             return {"floors": floors, "shades": self._covers(by)}
-        rows, states = await asyncio.gather(self.template(self.AREAS_TPL), self.ha_get("/states"))
+        rows, states = await asyncio.gather(self.template(self.AREAS_TPL), self.all_states())
         by = {s["entity_id"]: s for s in states}
         floors: dict[str, dict] = {}
         ids = set()
@@ -247,7 +255,7 @@ class House:
 
     async def state(self):
         states, day, log_rows, cfg = await asyncio.gather(
-            self.ha_get("/states"), self.circadian_day(),
+            self.all_states(), self.circadian_day(),
             self.cached("logbook", 60, self.logbook), self.cached("config", 3600, lambda: self.ha_get("/config")))
         by = {s["entity_id"]: s for s in states}
 
@@ -362,6 +370,7 @@ def make_app(house: House) -> web.Application:
 
     async def on_start(_app):
         house.session = aiohttp.ClientSession()
+        app["live"] = asyncio.create_task(house.live.run(house.session))
         app["board_loop"] = asyncio.create_task(board.loop())
 
     async def on_stop(_app):
@@ -387,6 +396,26 @@ def make_app(house: House) -> web.Application:
     async def api_do(req):
         await house.do(await req.json())
         return web.json_response({"ok": True})
+
+    async def api_stream(req):
+        """Tells open pages the moment the house changes (server-sent events), so they don't poll."""
+        resp = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache",
+                                           "X-Accel-Buffering": "no"})
+        await resp.prepare(req)
+        await resp.write(b": hello\n\n")
+        try:
+            while True:
+                ev = house.live.changed
+                try:
+                    await asyncio.wait_for(ev.wait(), 25)
+                except asyncio.TimeoutError:
+                    await resp.write(b": ping\n\n")
+                    continue
+                await asyncio.sleep(1.2)          # let a burst of changes land together
+                await resp.write(f"data: {house.live.version}\n\n".encode())
+        except (ConnectionResetError, asyncio.CancelledError, RuntimeError):
+            pass
+        return resp
 
     async def api_home(_req):
         return web.json_response(await house.cached("home", 15, house.home))
@@ -440,6 +469,7 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/board.jpg", board_jpeg)
     app.router.add_get("/api/board", api_board)
     app.router.add_get("/api/home", api_home)
+    app.router.add_get("/api/stream", api_stream)
     app.router.add_get("/frame/thumb/{cid}", frame_thumb)
     app.router.add_get("/api/board/status", api_board_status)
     app.router.add_post("/api/board/try", api_board_try)

@@ -771,7 +771,18 @@ fig.addEventListener("pointercancel",()=>{ scrub=null; if (S) draw(); });   // a
 S = kept("house-last-state", 12*36e5); H = kept("house-last-home", 12*36e5);
 if (S) { try{ render(); }catch(e){ S = null; } }
 renderHome();
-load(); if (pins.length) loadDevices(); renderPinned(); setInterval(refresh,30000);
+load(); if (pins.length) loadDevices(); renderPinned(); setInterval(refresh,60000);
+/* Live: the server says when the house changes; refresh then, instead of polling */
+(function live(){
+  if (API.startsWith("mock") || !window.EventSource) return;
+  let es, timer;
+  const open = () => {
+    es = new EventSource("api/stream");
+    es.onmessage = () => { clearTimeout(timer); timer = setTimeout(()=>{ if (!document.hidden){ refresh(); if (view==="home") loadHome(); } }, 300); };
+    es.onerror = () => { es.close(); setTimeout(open, 10000); };
+  };
+  open();
+})();
 loadHome(); setInterval(()=>{ if (view==="home") loadHome(); }, 30000);
 document.addEventListener("visibilitychange",()=>{ if (!document.hidden) refresh(); });
 </script>
