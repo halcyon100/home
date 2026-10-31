@@ -757,6 +757,7 @@ def api_status() -> dict:
         "last_check": STATE.last_check,
         "last_result": STATE.last_result,
         "escapes": escape_counts(),
+        "board": {"showing": bool(board_state().get("showing"))},
     }
     if power == "on":
         def read(art):
@@ -1769,11 +1770,11 @@ PAGE = r"""<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Frame">
 <title>Frame</title>
-<link rel="stylesheet" href="shared/tokens.css?v=29692212">
-<script src="shared/appnav.js?v=29692212"></script>
+<link rel="stylesheet" href="shared/tokens.css?v=f518cf9c">
+<script src="shared/appnav.js?v=f518cf9c"></script>
 <style>
 :root{
-  /* Frame speaks the house's shared tokens (shared/tokens.css?v=29692212); these names map onto them. */
+  /* Frame speaks the house's shared tokens (shared/tokens.css?v=f518cf9c); these names map onto them. */
   --wall:var(--ground); --wall-deep:var(--ground); --wall-lift:var(--well);
   --plaster:var(--ink); --sage:var(--quiet); --brass:var(--ink); --brass-deep:var(--ink);
   --bezel:#141614; --danger:var(--alert);
@@ -1831,7 +1832,7 @@ select,input{max-width:100%}
 .switch strong{display:block;font-weight:560;font-stretch:96%}
 .switch small{display:block;color:var(--sage);font-size:14px;margin-top:2px}
 
-/* buttons come from shared/tokens.css?v=29692212; brass is the main action */
+/* buttons come from shared/tokens.css?v=f518cf9c; brass is the main action */
 .btn.brass{}
 
 /* library */
@@ -2025,7 +2026,7 @@ details.panel:not([open])>summary{margin-bottom:0}
 }
 @media (max-height:520px){ .tv{max-width:150px} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-/* shared app bar: layout from shared/tokens.css?v=29692212 */
+/* shared app bar: layout from shared/tokens.css?v=f518cf9c */
 
 /* ---------- v1.5 layout: three views under the shared bar, House type and spacing ---------- */
 .fview{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(14px,2vw,26px) var(--gut) 64px}

@@ -19,7 +19,7 @@ from listen import Listen
 log = logging.getLogger("music")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
