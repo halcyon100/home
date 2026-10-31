@@ -97,3 +97,13 @@ def test_the_sky_now_is_the_station_report_not_the_model():
     assert now["state"] == "sunny"
     assert now["attributes"]["temperature"] == 52 and now["attributes"]["uv_index"] == 1.3
     assert observed({"state": "unavailable"}, model) == model
+
+
+def test_a_clear_night_says_so():
+    h, daily = saturday()
+    now = datetime(2026, 10, 31, 19, 55, tzinfo=TZ)
+    b = build(now, TZ, {"state": "clear-night", "attributes": {"temperature": 50}}, h, daily,
+              datetime(2026, 10, 31, 7, 25, tzinfo=TZ), None, [], sunset=datetime(2026, 10, 31, 17, 47, tzinfo=TZ))
+    assert b["light"] == "night" and b["label"] == "Tonight"
+    assert b["say"].startswith("Clear tonight")
+    assert b["dim"] is True          # no night photo yet: the day sky, dimmed
