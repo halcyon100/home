@@ -597,6 +597,30 @@ def _mqtt_settings():
         return json.load(r).get("data") or None
 
 
+def art_summary(on: bool) -> dict:
+    """What the Frame is showing, in words, for Home Assistant (and so the voice assistant)."""
+    p = STATE.get("playing") or {}
+    board = bool(board_state().get("showing"))
+    label = label_for(p["target"]) if p else None
+    mins = p.get("minutes") if p else None
+    every = None
+    if mins:
+        every = {60: "every hour", 1440: "every day", 720: "every 12 hours"}.get(mins, "every %d min" % mins)
+    if not on:
+        state = "Asleep"
+    elif board:
+        state = "Kitchen board"
+    elif label:
+        state = "%s, changing %s" % (label, every) if every else label
+    else:
+        state = "One picture, not rotating"
+    nxt = p.get("next_at") if p and p.get("mode") == "app" else None
+    return {"state": state, "collection": label, "rotating": bool(p), "change_every_minutes": mins,
+            "rotated_by": p.get("mode") if p else None, "picture": p.get("last") if p else None,
+            "next_change": datetime.fromtimestamp(nxt).astimezone().isoformat() if nxt else None,
+            "kitchen_board": board}
+
+
 def publish_state(power=None) -> None:
     c = MQTT["client"]
     if c is None:
@@ -606,6 +630,9 @@ def publish_state(power=None) -> None:
         on = power == "on" and not STATE.get("asleep")
         c.publish(BASE + "/display/state", "ON" if on else "OFF", retain=True)
         c.publish(BASE + "/asleep/state", "ON" if STATE.get("asleep") else "OFF", retain=True)
+        art = art_summary(on)
+        c.publish(BASE + "/art/state", art.pop("state"), retain=True)
+        c.publish(BASE + "/art/attr", json.dumps(art), retain=True)
     except Exception as e:
         log.info("MQTT publish failed: %s", e)
 
@@ -630,6 +657,10 @@ def mqtt_start() -> None:
         c.publish("homeassistant/switch/%s/display/config" % BASE, json.dumps(dict(avail, **{
             "name": "Display", "unique_id": BASE + "_display", "icon": "mdi:image-frame",
             "command_topic": BASE + "/display/set", "state_topic": BASE + "/display/state",
+            "device": device})), retain=True)
+        c.publish("homeassistant/sensor/%s/art/config" % BASE, json.dumps(dict(avail, **{
+            "name": "Showing", "unique_id": BASE + "_art", "icon": "mdi:image-multiple",
+            "state_topic": BASE + "/art/state", "json_attributes_topic": BASE + "/art/attr",
             "device": device})), retain=True)
         c.publish(BASE + "/status", "online", retain=True)
         c.subscribe(BASE + "/display/set")
@@ -1088,12 +1119,14 @@ def api_play(p: dict) -> dict:
             log.info("Couldn't switch off the TV's own rotation: %s", e)
     STATE.set("playing", {"target": target, "minutes": minutes, "shuffle": shuffle,
                           "mode": "tv" if on_tv else "app", "next_at": 0, "last": None})
+    threading.Thread(target=publish_state, daemon=True).start()
     log.info("Playing %s every %d min (%s)", label_for(target), minutes, "on the TV" if on_tv else "from this app")
     return {"ok": True, "mode": "tv" if on_tv else "app", "note": note}
 
 
 def stop_playing() -> None:
     STATE.set("playing", None)
+    threading.Thread(target=publish_state, daemon=True).start()
     set_rotation(0, MY_PHOTOS, True)
 
 
@@ -1152,6 +1185,7 @@ def player_loop() -> None:
             TVC.call(go)
             p.update(last=nxt, next_at=time.time() + p["minutes"] * 60)
             STATE.set("playing", p)
+            publish_state()
             log.info("Now showing %s (%s)", nxt, label_for(p["target"]))
         except Exception as e:
             log.info("Player: couldn't change the picture (%s)", e)
@@ -1247,6 +1281,7 @@ def api_board_show() -> dict:
         except Exception as e:
             log.info("Board: couldn't brighten the screen (%s)", e)
         STATE.set("board", b)
+    threading.Thread(target=publish_state, daemon=True).start()
     log.info("Board on screen (was %s, brightness %s → +%d)", b.get("prev"), b.get("brightness"), BOARD_BRIGHTER)
     return {"ok": True, "id": cid}
 
@@ -1283,6 +1318,7 @@ def api_board_hide() -> dict:
                     log.info("Board: couldn't restore the TV's rotation (%s)", e)
         STATE.set("board", {})
     _board_drop(cid)
+    threading.Thread(target=publish_state, daemon=True).start()
     log.info("Board put away; back to %s", prev)
     return {"ok": True, "back_to": prev}
 
