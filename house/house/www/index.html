@@ -243,6 +243,13 @@ ol.log.big{font-size:var(--s0)}
 .hfield{display:grid;gap:clamp(30px,4vw,48px) clamp(28px,4vw,56px);margin-top:clamp(34px,5vw,56px);grid-template-columns:1fr}
 @media (min-width:760px){.hfield{grid-template-columns:1fr 1fr}}
 @media (prefers-reduced-motion:reduce){.tile{transition:none}}
+
+/* Loading: the shape of what's coming */
+.sk{display:inline-block;height:.8em;width:6em;max-width:100%;border-radius:6px;vertical-align:middle;
+  background:linear-gradient(90deg,var(--hair),color-mix(in srgb,var(--hair) 40%,transparent),var(--hair));background-size:200% 100%;animation:sk 1.3s ease-in-out infinite}
+.sk.short{width:9em;height:.6em}
+@keyframes sk{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.sk{animation:none}}
 </style>
 </head>
 <body>
@@ -667,12 +674,18 @@ $("bar").addEventListener("back", e=>{ if (view!=="home"){ e.preventDefault(); s
 /* Home: a tile per app, each saying what it's doing now */
 let H = null;
 async function loadHome(){
-  try{ const r = await fetch(API.startsWith("mock") ? "mock_home.json" : "api/home",{cache:"no-store"}); H = r.ok ? await r.json() : null; }catch(e){ H = null; }
+  try{ const r = await fetch(API.startsWith("mock") ? "mock_home.json" : "api/home",{cache:"no-store"}); if (r.ok){ H = await r.json(); keep("house-last-home", H); } }catch(e){}
   renderHome();
 }
 const hourWord = h => h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+/* Open instantly: show the last answer this phone saw, then the fresh one when it lands */
+function keep(k, v){ try{ localStorage.setItem(k, JSON.stringify({t: Date.now(), v})); }catch(e){} }
+function kept(k, maxAge){ try{ const o = JSON.parse(localStorage.getItem(k)||"null"); return o && Date.now()-o.t < maxAge ? o.v : null; }catch(e){ return null; } }
 function renderHome(){
-  if (!S) return;
+  if (!S){   // first ever visit: the shape of Home, while it loads
+    $("tiles").innerHTML = ["Light","Devices","Music","Frame","Activity","Home Assistant"].map(n=>`<div class="tile ghost"><b>${n}</b><div><div class="v"><i class="sk"></i></div><em><i class="sk short"></i></em></div></div>`).join("");
+    return;
+  }
   const now = new Date(S.now), d = S.circadian, w = S.weather;
   const date = new Intl.DateTimeFormat(undefined,{weekday:"long",month:"long",day:"numeric"}).format(now);
   $("hmast").innerHTML = `<span><b>${esc(date)}</b></span><span><b>${t(now)}</b></span>`;
@@ -707,8 +720,9 @@ async function load(){
     const r = await fetch(API,{cache:"no-store"});
     if (!r.ok) throw new Error(r.status);
     S = await r.json(); if (S.error) throw new Error(S.error);
-    render();
+    render(); keep("house-last-state", S);
   }catch(e){
+    if (S) return;   // keep showing the last good answer
     $("say").innerHTML = `The house didn't answer.<small>Pull to refresh, or check that Home Assistant is running.</small>`;
   }
 }
@@ -754,6 +768,9 @@ fig.addEventListener("pointerleave",()=>{ scrub=null; if (S) draw(); });
 fig.addEventListener("pointerup",ev=>{ if (ev.pointerType!=="mouse"){ setTimeout(()=>{scrub=null; if (S) draw();},1600); } });
 fig.addEventListener("pointercancel",()=>{ scrub=null; if (S) draw(); });   // a scroll that started on the graph
 
+S = kept("house-last-state", 12*36e5); H = kept("house-last-home", 12*36e5);
+if (S) { try{ render(); }catch(e){ S = null; } }
+renderHome();
 load(); if (pins.length) loadDevices(); renderPinned(); setInterval(refresh,30000);
 loadHome(); setInterval(()=>{ if (view==="home") loadHome(); }, 30000);
 document.addEventListener("visibilitychange",()=>{ if (!document.hidden) refresh(); });

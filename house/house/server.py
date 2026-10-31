@@ -21,7 +21,7 @@ from board import Board, observed
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.14.0"
+VERSION = "0.14.1"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -48,6 +48,8 @@ class House:
         # a group or a Hue-behind-Lutron wrapper in Home Assistant ("entity|Label").
         self.rooms = opts.get("rooms", []) or []
         self.device_ids: set[str] = set()
+        self._cache: dict = {}
+        self._refreshing: set = set()
         self.session: aiohttp.ClientSession | None = None
 
     def hdr(self):
@@ -207,9 +209,34 @@ class House:
                         "via": via.pop(e, None)})
         return out[-40:][::-1]
 
+    async def cached(self, key: str, ttl: float, fn):
+        """Serve the last answer while a fresh one is fetched in the background: pages open at once,
+        and a slow source (the logbook, the TV) never holds up the rest."""
+        import time
+        hit = self._cache.get(key)
+        if hit and time.time() - hit[0] < ttl:
+            return hit[1]
+        if hit:
+            if key not in self._refreshing:
+                self._refreshing.add(key)
+
+                async def bg():
+                    try:
+                        self._cache[key] = (time.time(), await fn())
+                    except Exception as ex:
+                        log.info("Refreshing %s: %s", key, ex)
+                    finally:
+                        self._refreshing.discard(key)
+                asyncio.create_task(bg())
+            return hit[1]
+        val = await fn()
+        self._cache[key] = (time.time(), val)
+        return val
+
     async def state(self):
-        states, day, log_rows, cfg = await asyncio.gather(self.ha_get("/states"), self.circadian_day(), self.logbook(),
-                                                          self.ha_get("/config"))
+        states, day, log_rows, cfg = await asyncio.gather(
+            self.ha_get("/states"), self.circadian_day(),
+            self.cached("logbook", 60, self.logbook), self.cached("config", 3600, lambda: self.ha_get("/config")))
         by = {s["entity_id"]: s for s in states}
 
         def pick(e):
@@ -349,7 +376,7 @@ def make_app(house: House) -> web.Application:
         return web.json_response({"ok": True})
 
     async def api_home(_req):
-        return web.json_response(await house.home())
+        return web.json_response(await house.cached("home", 15, house.home))
 
     async def frame_thumb(req):
         cid = req.match_info["cid"]

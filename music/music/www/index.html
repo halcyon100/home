@@ -133,7 +133,7 @@ const ICON = {
 };
 async function loadListen(){
   try{
-    const r = await fetch("api/listen",{cache:"no-store"}); L = await r.json(); renderListen();
+    const r = await fetch("api/listen",{cache:"no-store"}); L = await r.json(); renderListen(); keep("music-last-listen", L);
   }catch(e){ $("recs").innerHTML = `<p class="lwait">Couldn't reach the record shelf.</p>`; }
   clearTimeout(listenTimer);
   if (L && L.busy && view==="records") listenTimer = setTimeout(loadListen, 5000);
@@ -195,10 +195,13 @@ const IC = {
   pause:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6 4v10M12 4v10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`,
   play:`<svg viewBox="0 0 18 18" aria-hidden="true"><path d="M6 3.8v10.4L14.2 9z" fill="currentColor"/></svg>`,
 };
+/* Open instantly: the last answer this phone saw, then the fresh one */
+function keep(k, v){ try{ localStorage.setItem(k, JSON.stringify({t: Date.now(), v})); }catch(e){} }
+function kept(k, maxAge){ try{ const o = JSON.parse(localStorage.getItem(k)||"null"); return o && Date.now()-o.t < maxAge ? o.v : null; }catch(e){ return null; } }
 async function loadNow(){
   clearTimeout(nowTimer);
-  try{ const r = await fetch("api/now",{cache:"no-store"}); N = await r.json(); if (!dragging) renderNow(); }
-  catch(e){ $("nh").textContent = "The speakers didn't answer."; }
+  try{ const r = await fetch("api/now",{cache:"no-store"}); N = await r.json(); if (!dragging) renderNow(); keep("music-last-now", N); }
+  catch(e){ if (!N) $("nh").textContent = "The speakers didn't answer."; }
   if (view==="now" && !document.hidden) nowTimer = setTimeout(loadNow, 4000);
 }
 const vol = (room, v) => `<input type="range" min="0" max="100" value="${Math.round((v||0)*100)}" style="--v:${Math.round((v||0)*100)}%" data-vol="${esc(room)}" aria-label="${esc(room)} volume">`;
@@ -263,6 +266,8 @@ document.addEventListener("input", e=>{ const r = e.target.closest("input[data-v
 document.addEventListener("change", e=>{ const r = e.target.closest("input[data-vol]"); if (r){ dragging = false; act({op:"volume", room:r.dataset.vol, value:r.value/100}); } });
 document.addEventListener("visibilitychange", ()=>{ if (!document.hidden) (view==="now"?loadNow:loadListen)(); });
 
+N = kept("music-last-now", 6*36e5); L = kept("music-last-listen", 7*864e5);
+try{ if (N) renderNow(); if (L) renderListen(); }catch(e){}
 try{ const v = sessionStorage.getItem("music-view"); if (v==="records") show("records"); else loadNow(); }catch(e){ loadNow(); }
 </script>
 </body>
