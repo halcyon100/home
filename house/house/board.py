@@ -179,6 +179,40 @@ def sun_elevation(when: datetime, lat: float, lon: float) -> float:
     return math.asin(math.sin(lat * rad) * math.sin(dec) + math.cos(lat * rad) * math.cos(dec) * math.cos(ha)) / rad
 
 
+def moon_elevation(when: datetime, lat: float, lon: float) -> float:
+    """The moon's height in degrees, by Paul Schlyter's low-precision method (good to a degree or two,
+    which is plenty for drawing its arc). Includes the parallax that lowers it near the horizon."""
+    import math
+    rad = math.pi / 180
+    utc = when.astimezone(ZoneInfo("UTC"))
+    d = (utc - datetime(1999, 12, 31, tzinfo=ZoneInfo("UTC"))).total_seconds() / 86400
+    N = (125.1228 - 0.0529538083 * d) * rad
+    inc = 5.1454 * rad
+    w = (318.0634 + 0.1643573223 * d) * rad
+    a, e = 60.2666, 0.0549
+    M = ((115.3654 + 13.0649929509 * d) % 360) * rad
+    E = M + e * math.sin(M) * (1 + e * math.cos(M))
+    for _ in range(5):
+        E = E - (E - e * math.sin(E) - M) / (1 - e * math.cos(E))
+    xv, yv = a * (math.cos(E) - e), a * math.sqrt(1 - e * e) * math.sin(E)
+    v, r = math.atan2(yv, xv), math.hypot(xv, yv)
+    xh = r * (math.cos(N) * math.cos(v + w) - math.sin(N) * math.sin(v + w) * math.cos(inc))
+    yh = r * (math.sin(N) * math.cos(v + w) + math.cos(N) * math.sin(v + w) * math.cos(inc))
+    zh = r * math.sin(v + w) * math.sin(inc)
+    lon_e, lat_e = math.atan2(yh, xh), math.atan2(zh, math.hypot(xh, yh))
+    ecl = (23.4393 - 3.563e-7 * d) * rad
+    xe, ye, ze = math.cos(lon_e) * math.cos(lat_e), math.sin(lon_e) * math.cos(lat_e), math.sin(lat_e)
+    yq, zq = ye * math.cos(ecl) - ze * math.sin(ecl), ye * math.sin(ecl) + ze * math.cos(ecl)
+    ra, dec = math.atan2(yq, xe), math.atan2(zq, math.hypot(xe, yq))
+    ls = (282.9404 + 4.70935e-5 * d) + (356.0470 + 0.9856002585 * d)
+    ut = utc.hour + utc.minute / 60 + utc.second / 3600
+    lst = ((ls + 180) / 15 + ut + lon / 15) % 24
+    ha = lst * 15 * rad - ra
+    alt = math.asin(math.sin(lat * rad) * math.sin(dec) + math.cos(lat * rad) * math.cos(dec) * math.cos(ha))
+    alt -= math.asin(1 / r) * math.cos(alt)
+    return alt / rad
+
+
 def house_light(day: dict | None, when: datetime) -> tuple[float, int] | None:
     """What the house's light is doing at a moment, from Circadian's day: the average level of the
     main-floor lights and their median colour, the same curve the House app draws."""
@@ -501,6 +535,7 @@ class Board:
             at = datetime.fromisoformat(p["at"])
             if lat is not None and lon is not None:
                 p["sun"] = round(sun_elevation(at, lat, lon), 1)
+                p["moon"] = round(moon_elevation(at, lat, lon), 1)
             hl = house_light(day, at)
             if hl:
                 p["light"], p["k"] = hl

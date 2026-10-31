@@ -7,8 +7,8 @@
 <style>
 @font-face{font-family:"Archivo";src:url("shared/archivo.woff2") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%}
 /* The Frame, on its side: 2160 × 3840, drawn at 1080 × 1920 and captured at 2× */
-:root{--ink:#F4F1EA;--quiet:rgb(244 241 234 / .68);--hair:rgb(244 241 234 / .28);--glow:rgb(255 226 170 / .9)}
-[data-ink="dark"]{--ink:#15191C;--quiet:rgb(21 25 28 / .62);--hair:rgb(21 25 28 / .22);--glow:rgb(30 36 40 / .5)}
+:root{--sun:#FFD27A;--moonline:rgb(232 238 248 / .85);--ink:#F4F1EA;--quiet:rgb(244 241 234 / .68);--hair:rgb(244 241 234 / .28);--glow:rgb(255 226 170 / .9)}
+[data-ink="dark"]{--sun:#D9921C;--moonline:rgb(40 52 66 / .75);--ink:#15191C;--quiet:rgb(21 25 28 / .62);--hair:rgb(21 25 28 / .22);--glow:rgb(30 36 40 / .5)}
 html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#0E151C}
 body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-settings:"tnum" 1,"case" 1;-webkit-font-smoothing:antialiased}
 .sky{position:absolute;inset:0;background-size:cover;background-position:center}
@@ -37,7 +37,7 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 .temp sup{font-size:.42em;vertical-align:.95em;margin-left:.02em;font-weight:250}
 .hl{margin-top:22px;display:grid;gap:10px;font-size:34px;font-stretch:90%}
 .hl span{display:flex;gap:16px;align-items:baseline}
-.hl i{font-style:normal;color:var(--quiet);font-size:26px;font-stretch:84%;width:1.6em}
+.hl i{font-style:normal;color:var(--quiet);font-size:26px;font-stretch:84%;min-width:1.6em}
 .say{margin:40px 0 0;font-size:72px;line-height:1.02;font-weight:290;font-stretch:96%;letter-spacing:-.028em;max-width:12.5ch}
 
 /* Notable: only what's worth saying, with when */
@@ -75,7 +75,7 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 .key{display:flex;flex-wrap:wrap;gap:8px 30px;margin-top:10px;font-size:24px;font-stretch:82%;color:var(--quiet)}
 .key i{display:inline-block;width:26px;height:0;vertical-align:.32em;margin-right:10px}
 .key .kt{border-top:3.5px solid var(--ink)}
-.key .ks{border-top:3px dotted #FFD27A}
+.key .ks{border-top:3px dotted var(--sun)}
 .key .kl{height:10px;vertical-align:0;background:linear-gradient(90deg,#ffb46b,#fff1e0,#dfe8ff);opacity:.85;border-radius:2px}
 .key .kr{width:8px;height:16px;vertical-align:-1px;background:var(--ink);opacity:.5;border-radius:2px}
 
@@ -136,12 +136,19 @@ function chart(hours, nowIdx){
       <path d="${smooth(lp)}L${W} ${base}L0 ${base}Z" fill="url(#lk)" opacity=".22"/>
       <path d="${smooth(lp)}" fill="none" stroke="url(#lk)" stroke-width="3" opacity=".95"/>`;
   }
-  // the sun: height above the horizon, on a fixed 0–70° scale so the seasons read true
-  let sun="";
-  const sy=e=>base-Math.max(0,e)/70*(base-40);
-  const up=hours.map((h,i)=>[i,h.sun]).filter(([,e])=>e!=null&&e>-1);
-  if (up.length>1) sun=`<path d="${smooth(up.map(([i,e])=>[x(i),sy(e)]))}" fill="none" stroke="#FFD27A" stroke-width="3" stroke-dasharray="0.5 9" stroke-linecap="round"/>`;
-  const sunNow = hours[nowIdx].sun>0 ? `<circle cx="${x(nowIdx)}" cy="${sy(hours[nowIdx].sun)}" r="13" fill="#FFD27A"/><circle cx="${x(nowIdx)}" cy="${sy(hours[nowIdx].sun)}" r="30" fill="#FFD27A" opacity=".25"/>` : "";
+  // the sky line: the sun's height while it's up, the moon's while it's up and the sun isn't,
+  // one dotted line on a fixed 0–75° scale so the seasons read true
+  const sy=e=>base-Math.max(0,e)/75*(base-40);
+  const body=hours.map(h=>h.sun!=null&&h.sun>-1?["sun",h.sun]:h.moon!=null&&h.moon>0?["moon",h.moon]:null);
+  let sun="", run=[], kind=null;
+  const flush=()=>{ if(run.length>1) sun+=`<path d="${smooth(run)}" fill="none" stroke="${kind==="sun"?"var(--sun)":"var(--moonline)"}" stroke-width="3" stroke-dasharray="0.5 9" stroke-linecap="round"/>`; run=[]; };
+  body.forEach((b,i)=>{ if(!b || b[0]!==kind){ flush(); kind=b?b[0]:null; } if(b) run.push([x(i),sy(b[1])]); });
+  flush();
+  let sunNow="";
+  if (body[nowIdx] && body[nowIdx][0]==="sun") sunNow=`<circle cx="${x(nowIdx)}" cy="${sy(body[nowIdx][1])}" r="30" fill="var(--sun)" opacity=".25"/><circle cx="${x(nowIdx)}" cy="${sy(body[nowIdx][1])}" r="13" fill="var(--sun)"/>`;
+  // the moon, drawn at its highest point on the line (or where it is now, after dark)
+  const mi = body[nowIdx]&&body[nowIdx][0]==="moon" ? nowIdx : body.reduce((m,b,i)=>b&&b[0]==="moon"&&(m<0||b[1]>body[m][1])?i:m,-1);
+  if (mi>=0 && B_MOON) sunNow+=`<g transform="translate(${(x(mi)-17).toFixed(1)} ${(sy(body[mi][1])-17).toFixed(1)}) scale(1.13)">${moonSvg(B_MOON.f).replace(/<\/?svg[^>]*>/g,"")}</g>`;
   // rain: ticks along the foot
   const bw=W/n*.5;
   const bars=hours.map((h,i)=>h.p>=10?`<rect x="${(x(i)-bw/2).toFixed(1)}" y="${(H-h.p/100*30).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h.p/100*30).toFixed(1)}" rx="2" fill="var(--ink)" opacity="${(.2+h.p/100*.5).toFixed(2)}"/>`:"").join("");
@@ -169,7 +176,9 @@ function moonSvg(f){
   const d=`M15 2 A${r} ${r} 0 0 ${outer} 15 28 A${rx} ${r} 0 0 ${inner} 15 2Z`;
   return `<svg viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="${r}" fill="var(--ink)" opacity=".18"/>${lit>.02?`<path d="${d}" fill="var(--ink)"/>`:""}<circle cx="15" cy="15" r="${r}" fill="none" stroke="var(--ink)" stroke-width="1.2" opacity=".6"/></svg>`;
 }
+let B_MOON=null;
 function render(B){
+  B_MOON=B.moon;
   const s = B.dim ? DIM : (SKY[B.sky] || SKY.overcast);
   document.getElementById("sky").style.filter = B.dim ? "brightness(.38) saturate(.55) hue-rotate(12deg)" : "";
   document.documentElement.dataset.ink = s.ink;
@@ -189,7 +198,7 @@ function render(B){
       <div class="col"><h3>${esc(d.name)}</h3><img alt="" src="wx/${esc(d.icon)}.svg">
         <div class="t">${d.hi}°<span>${d.lo}°</span></div><p>${d.note}</p></div>`).join("")}</div></section>
     <section class="today"><h2>${esc(B.label || "Today")}</h2>${chart(B.hours, B.nowIdx)}<div class="axis">${axis}</div>
-      <div class="key"><span><i class="kt"></i>Outside</span><span><i class="ks"></i>The sun</span><span><i class="kl"></i>The house's light</span><span><i class="kr"></i>Chance of rain</span></div></section>
+      <div class="key"><span><i class="kt"></i>Outside</span><span><i class="ks"></i>Sun and moon</span><span><i class="kl"></i>The house's light</span><span><i class="kr"></i>Chance of rain</span></div></section>
     ${B.inside?`<section class="inside"><h2>Inside</h2><div class="in">
       ${B.inside.t!=null?`<div class="n">${B.inside.t}°</div>`:""}${B.inside.rh!=null?`<div class="n q">${B.inside.rh}<small>%</small></div>`:""}
       <div class="in-notes">${B.inside.notes.map(x=>`<span>${x}</span>`).join("")}</div></div></section>`:""}`;
