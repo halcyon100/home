@@ -474,7 +474,11 @@ class Board:
         self.start = _hhmm(opts.get("board_from"), "05:00")
         self.end = _hhmm(opts.get("board_until"), "11:00")
         self.linger = int(opts.get("board_linger_minutes", 5)) * 60
-        self.every = int(opts.get("board_refresh_minutes", 10)) * 60
+        self.every = int(opts.get("board_refresh_minutes", 30)) * 60       # at the latest, for the clock
+        self.gap_showing = int(opts.get("board_redraw_showing_seconds", 180))   # soonest redraw while it's up
+        self.gap_waiting = int(opts.get("board_redraw_waiting_seconds", 300))   # ... while it waits on the TV
+        self.staged_looks = ""
+        self.checked = -1
         self.enabled = bool(opts.get("board", True))
         self.staged_at = 0.0
         self.showing = False
@@ -499,8 +503,9 @@ class Board:
         h = self.house
         nws = h.opts.get("forecast", "weather.nws")
         states, day, cfg, hourly, daily = await asyncio.gather(
-            h.ha_get("/states"), h.circadian_day(), h.ha_get("/config"),
-            self.forecasts(nws, "hourly"), self.forecasts(nws, "twice_daily"))
+            h.all_states(), h.circadian_day(), h.cached("config", 3600, lambda: h.ha_get("/config")),
+            h.cached("fc-hourly", 600, lambda: self.forecasts(nws, "hourly")),
+            h.cached("fc-daily", 600, lambda: self.forecasts(nws, "twice_daily")))
         by = {s["entity_id"]: s for s in states}
         self.tz = ZoneInfo(cfg.get("time_zone") or "America/Chicago")
         current = observed(by.get(nws), by.get(h.opts.get("weather", "weather.forecast_home")))
@@ -569,7 +574,14 @@ class Board:
             r.raise_for_status()
             return await r.json()
 
+    @staticmethod
+    def looks(b: dict) -> str:
+        """What the board would show, minus its clock: two boards that look the same give the same string."""
+        return json.dumps({k: v for k, v in b.items() if k != "asof"}, sort_keys=True, default=str)
+
     async def stage(self) -> dict:
+        self.staged_looks = self.looks(await self.data())
+        self.checked = self.house.live.version
         jpeg = await self.render()
         r = await self.frame_post("/api/board/stage", jpeg)
         if r.get("ok"):
@@ -595,6 +607,8 @@ class Board:
         return self.start[0] * 60 + self.start[1] <= m < self.end[0] * 60 + self.end[1]
 
     async def present(self) -> bool:
+        if self.house.live.ready:
+            return (self.house.live.states.get(self.sensor) or {}).get("state") == "on"
         st = await self.house.ha_get(f"/states/{self.sensor}")
         return st.get("state") == "on"
 
@@ -605,8 +619,16 @@ class Board:
         if here:
             self.last_seen = time.time()
         window = self.in_window(now) or trying
-        if window and time.time() - self.staged_at > self.every and not self.staging:
-            self.staging = asyncio.create_task(self._stage_bg())
+        age = time.time() - self.staged_at
+        if window and not self.staging:
+            if age > self.every:
+                self.staging = asyncio.create_task(self._stage_bg())
+            elif (self.has_picture and self.house.live.version != self.checked
+                  and age > (self.gap_showing if self.showing else self.gap_waiting)):
+                # Something changed in the house: redraw only if the board would look different.
+                self.checked = self.house.live.version
+                if self.looks(await self.data()) != self.staged_looks:
+                    self.staging = asyncio.create_task(self._stage_bg())
         if window and here and not self.showing and self.has_picture:
             r = await self.frame_post("/api/board/show")
             self.showing = bool(r.get("ok"))
