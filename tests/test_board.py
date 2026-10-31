@@ -107,3 +107,9 @@ def test_a_clear_night_says_so():
     assert b["light"] == "night" and b["label"] == "Tonight"
     assert b["say"].startswith("Clear tonight")
     assert b["dim"] is True          # no night photo yet: the day sky, dimmed
+
+
+def test_moon_phase():
+    from board import moon
+    m = moon(datetime(2026, 10, 30, 20, tzinfo=TZ))
+    assert m["name"] in ("Waning gibbous", "Full moon") and m["pct"] > 60

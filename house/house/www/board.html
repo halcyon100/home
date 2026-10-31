@@ -28,6 +28,8 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 .mast{display:flex;justify-content:space-between;align-items:baseline;font-size:34px;font-stretch:88%;letter-spacing:.005em}
 .mast b{font-weight:560}
 .mast span{color:var(--quiet)}
+.mast .moon{display:inline-flex;align-items:center;gap:12px;margin-left:28px}
+.mast .moon svg{width:30px;height:30px;transform:translateY(5px)}
 
 /* Now: the number and the sentence */
 .now{margin-top:52px;display:flex;align-items:flex-start;gap:34px}
@@ -111,6 +113,13 @@ function chart(hours, nowIdx){
 
 /* After dark with no night photo yet: the day's sky, dimmed and cooled, with light type */
 const DIM = {ink:"light", veil:"linear-gradient(180deg,rgb(6 10 20 / .35),rgb(6 10 20 / .25) 45%,rgb(6 10 20 / .6))"};
+/* The moon as it looks: lit limb on the right while waxing, left while waning; the terminator is an ellipse */
+function moonSvg(f){
+  const r=13, k=Math.cos(2*Math.PI*f), waxing=f<.5, lit=(1-k)/2;
+  const rx=Math.abs(k*r).toFixed(2), outer=waxing?1:0, inner=(k>0)===waxing?0:1;
+  const d=`M15 2 A${r} ${r} 0 0 ${outer} 15 28 A${rx} ${r} 0 0 ${inner} 15 2Z`;
+  return `<svg viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="${r}" fill="var(--ink)" opacity=".18"/>${lit>.02?`<path d="${d}" fill="var(--ink)"/>`:""}<circle cx="15" cy="15" r="${r}" fill="none" stroke="var(--ink)" stroke-width="1.2" opacity=".6"/></svg>`;
+}
 function render(B){
   const s = B.dim ? DIM : (SKY[B.sky] || SKY.overcast);
   document.getElementById("sky").style.filter = B.dim ? "brightness(.38) saturate(.55) hue-rotate(12deg)" : "";
@@ -120,7 +129,7 @@ function render(B){
   const n = B.hours.length, step = n > 12 ? 3 : 2;
   const axis = B.hours.map((h,i)=>i%step===0 && (n-1-i >= step/2 || i===0) ? `<span style="left:${(i/(n-1)*100).toFixed(2)}%">${esc(h.h)}</span>` : "").join("");
   document.getElementById("page").innerHTML = `
-    <header class="mast"><span><b>${esc(B.day)}</b> &nbsp;${esc(B.date)}</span><span>${esc(B.place)} · ${esc(B.asof)}</span></header>
+    <header class="mast"><span><b>${esc(B.day)}</b> &nbsp;${esc(B.date)}${B.moon?`<span class="moon" title="${B.moon.pct}% lit">${moonSvg(B.moon.f)}${esc(B.moon.name)}</span>`:""}</span><span>${esc(B.place)} · ${esc(B.asof)}</span></header>
     <section class="now">
       <div class="temp">${B.temp}<sup>°</sup></div>
       <div class="hl"><span><i>H</i>${B.high}°</span><span><i>L</i>${B.low}°</span></div>
