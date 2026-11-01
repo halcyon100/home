@@ -23,7 +23,7 @@ from live import Live
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.16.0"
+VERSION = "0.16.1"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -481,6 +481,10 @@ def make_app(house: House) -> web.Application:
         log.info("Guide saved (%s bytes, changed=%s)", res["bytes"], res["changed"])
         return web.json_response(res)
 
+    async def api_about(_req):
+        # The foot of Home: which release is running, and when the guide last changed.
+        return web.json_response({"version": VERSION, "updated": int(guide.updated() or 0)})
+
     async def api_guide_versions(_req):
         return web.json_response({"versions": guide.versions()})
 
@@ -505,6 +509,7 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/api/guide", api_guide)
     app.router.add_put("/api/guide", api_guide_save)
     app.router.add_get("/api/guide/versions", api_guide_versions)
+    app.router.add_get("/api/about", api_about)
     return app
 
 
