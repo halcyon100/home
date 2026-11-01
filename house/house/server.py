@@ -23,7 +23,7 @@ from live import Live
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.18.1"
+VERSION = "0.18.2"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -316,7 +316,10 @@ class House:
                           "mode": s.get("state"), "action": a.get("hvac_action"),
                           "now": a.get("current_temperature"), "target": a.get("temperature"),
                           "humidity": a.get("current_humidity"), "eco": a.get("preset_mode") == "eco",
-                          "fan": a.get("fan_mode")})
+                          "fan": a.get("fan_mode"),
+                          # when a fan timer ends (the Nest integration's "fan timer timeout" sensor)
+                          "fan_until": (by.get("sensor." + z["entity"].split(".", 1)[1] + "_fan_timer_timeout")
+                                        or {}).get("state")})
         wx = by.get(self.opts.get("forecast", "weather.nws")) or {}
         cold = (by.get(self.opts.get("climate_too_cold", "binary_sensor.too_cold_for_ac")) or {}).get("state") == "on"
         return {"mode": (by.get(self.climate_mode) or {}).get("state"), "zones": zones,
