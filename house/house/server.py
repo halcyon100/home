@@ -23,7 +23,7 @@ from live import Live
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.17.0"
+VERSION = "0.17.1"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -476,7 +476,7 @@ def make_app(house: House) -> web.Application:
             raise web.HTTPForbidden(text="the guide is saved through Home Assistant only")
         body = await req.json()
         try:
-            res = guide.save(body.get("markdown"))
+            res = guide.edit(body["edits"]) if "edits" in body else guide.save(body.get("markdown"))
         except ValueError as ex:
             return web.json_response({"ok": False, "reason": str(ex)}, status=400)
         log.info("Guide saved (%s bytes, changed=%s)", res["bytes"], res["changed"])
@@ -529,6 +529,7 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/guide", guide_page)
     app.router.add_get("/api/guide", api_guide)
     app.router.add_put("/api/guide", api_guide_save)
+    app.router.add_patch("/api/guide", api_guide_save)
     app.router.add_get("/api/guide/versions", api_guide_versions)
     app.router.add_get("/api/about", api_about)
     app.router.add_get("/nowplaying", nowplaying_page)

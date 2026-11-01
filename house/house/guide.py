@@ -40,6 +40,24 @@ class Guide:
             return []
         return sorted((p.name for p in self.old.glob("*.md")), reverse=True)
 
+    def edit(self, edits: list) -> dict:
+        """Small changes without resending the whole guide: each {"find", "replace"} must match exactly once.
+        All or nothing: if any edit doesn't apply, nothing is saved."""
+        text = self.read()
+        if text is None:
+            raise ValueError("there's no guide to edit yet")
+        if not isinstance(edits, list) or not edits:
+            raise ValueError("no edits")
+        for n, e in enumerate(edits, 1):
+            find, repl = (e or {}).get("find"), (e or {}).get("replace")
+            if not isinstance(find, str) or not find or not isinstance(repl, str):
+                raise ValueError(f"edit {n}: needs find and replace")
+            hits = text.count(find)
+            if hits != 1:
+                raise ValueError(f"edit {n}: the text to find appears {hits} times, not once")
+            text = text.replace(find, repl)
+        return self.save(text)
+
     def save(self, text: str) -> dict:
         if not isinstance(text, str) or not text.strip():
             raise ValueError("the guide can't be empty")

@@ -39,3 +39,13 @@ def test_refuses_empty_and_huge(tmp_path):
     with pytest.raises(ValueError):
         g.save("x" * (600 * 1024))
     assert g.read() is None
+
+
+def test_edits_apply_all_or_nothing(tmp_path):
+    g = Guide(tmp_path / "guide")
+    g.save("# House\n\nThe stairs go dark at sunset.\n")
+    g.edit([{"find": "go dark at sunset", "replace": "go dark 30 minutes after sunset"}])
+    assert "30 minutes after sunset" in g.read()
+    with pytest.raises(ValueError):
+        g.edit([{"find": "House", "replace": "Home"}, {"find": "nowhere", "replace": "x"}])
+    assert g.read().startswith("# House")          # the first edit didn't land either
