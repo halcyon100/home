@@ -23,7 +23,7 @@ from live import Live
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.18.5"
+VERSION = "0.18.6"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -350,7 +350,8 @@ class House:
         out = {"music": {"ok": music is not None, "playing": playing}, "frame": None}
         if frame:
             out["frame"] = {"power": frame.get("power"), "current": frame.get("current"),
-                            "board": bool((frame.get("board") or {}).get("showing"))}
+                            "board": bool((frame.get("board") or {}).get("showing")),
+                            "label": (frame.get("board") or {}).get("label") or "Kitchen board"}
         return out
 
     async def frame_thumb(self, cid: str) -> bytes | None:

@@ -789,7 +789,7 @@ def api_status() -> dict:
         "last_check": STATE.last_check,
         "last_result": STATE.last_result,
         "escapes": escape_counts(),
-        "board": {"showing": bool(board_state().get("showing"))},
+        "board": {"showing": bool(board_state().get("showing")), "label": board_state().get("label") or "Kitchen board"},
     }
     if power == "on":
         def read(art):
