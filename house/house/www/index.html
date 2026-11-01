@@ -227,6 +227,9 @@ ol.log.big{font-size:var(--s0)}
 .seg.small button{padding:.35em 1em .4em;font-size:var(--s-1)}
 .seg button.busy{opacity:.5}
 .seg button:disabled{opacity:.32;cursor:not-allowed}
+.fanico{width:15px;height:15px;margin-left:.45em;vertical-align:-2px;fill:currentColor;opacity:.85}
+.fanico g{transform-origin:12px 12px;animation:spin 1.6s linear infinite}
+@media (prefers-reduced-motion:reduce){.fanico g{animation:none}}
 #clnote b,#fannote b{color:var(--ink);font-weight:520}
 .cl-mode{margin-top:clamp(18px,3vw,32px)}
 .cl-mode p,.fans p{margin:.8em 0 0;max-width:46ch}
@@ -756,12 +759,18 @@ function renderHome(){
     const running = c.zones.find(z=>z.action==="heating"||z.action==="cooling");
     const temps = c.zones.map(z=>`${SHORT[z.name]||z.name} ${z.now!=null?Math.round(z.now)+"°":"–"}`).join(" · ");
     const v = running ? (running.action==="heating"?"Heating":"Cooling") : c.fans ? "Fans on" : (c.mode||"–");
-    tiles.push(`<button class="tile" data-view="climate"><b>Climate</b><div><div class="v">${esc(v)}</div><em>${esc(temps)}${running&&c.fans?" · fans on":""}</em></div></button>`);
+    const ends = c.zones.map(z=>Date.parse(z.fan_until)).filter(x=>!isNaN(x));
+    const left = c.fans && ends.length ? Math.max(0, Math.ceil((Math.max(...ends) - Date.now())/60000)) : null;
+    const mins = left!=null ? (left<=1 ? "a minute left" : `${left} min left`) : "";
+    const fanLine = !c.fans ? "" : running ? `Fans${mins?", "+mins:" on"} · ` : (mins ? mins+" · " : "");
+    tiles.push(`<button class="tile" data-view="climate"><b>Climate${c.fans?FAN_ICON:""}</b><div><div class="v">${esc(v)}</div><em>${esc(fanLine)}${esc(temps)}</em></div></button>`);
   } else tiles.push(`<button class="tile" data-app="/lovelace/0"><b>Home Assistant</b><div><div class="v vs">Everything else</div><em>Settings, automations, all devices</em></div></button>`);
   $("tiles").innerHTML = tiles.join("");
 }
 
 /* Climate */
+const FAN_ICON = `<svg class="fanico" viewBox="0 0 24 24" aria-label="Fans running"><g><path d="M12 12c0-4 1.2-7.5 3.6-7.5 2.2 0 2.6 3.2.2 5.4L12 12z"/><path d="M12 12c3.5 2 5.9 4.8 4.7 6.9-1.1 1.9-4.1.6-4.8-2.6L12 12z"/><path d="M12 12c-3.5 2-7.2 2.7-8.4.6-1.1-1.9 1.5-3.9 4.6-2.9L12 12z"/></g><circle cx="12" cy="12" r="1.6"/></svg>`;
+setInterval(()=>{ if (view==="home" && S && S.climate && S.climate.fans) renderHome(); }, 30000);   // the countdown
 const SHORT = {"Main Level":"Main","Upstairs":"Up","Basement":"Down"};
 const pend = {};          // targets tapped but not sent yet, by zone
 let pendTimer = {};
