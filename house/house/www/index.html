@@ -854,7 +854,14 @@ document.addEventListener("click",e=>{
   const zn = e.target.closest("[data-zone]");
   if (zn && !zn.disabled){ act({entity:zn.dataset.zone, op:zn.dataset.op}, zn); return; }
   const fan = e.target.closest("[data-fan]");
-  if (fan){ fan.classList.add("busy"); act({op:"fan", value:+fan.dataset.fan}, null, ()=>{ fan.classList.remove("busy"); fan.setAttribute("aria-checked","true"); }); return; }
+  if (fan){
+    fan.classList.add("busy");
+    fetch("api/do",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({op:"fan", value:+fan.dataset.fan})})
+      .then(async r=>{ if (!r.ok){ const m = (await r.text()).replace(/^\{.*"reason":\s*"([^"]+)".*\}$/,"$1"); $("fannote").innerHTML = `<b>The fans didn't start.</b> ${esc(m||"Try again in a moment.")}`; } })
+      .catch(()=>{ $("fannote").innerHTML = "<b>The fans didn't start.</b> The house didn't answer."; })
+      .finally(()=>{ fan.classList.remove("busy"); setTimeout(refresh, 2500); });
+    return;
+  }
   const ha = e.target.closest("[data-ha]");
   if (ha){ e.preventDefault(); window.appGo && window.appGo("/lovelace/0"); }
 });

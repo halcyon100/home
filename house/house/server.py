@@ -23,7 +23,7 @@ from live import Live
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.18.2"
+VERSION = "0.18.3"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -379,7 +379,11 @@ class House:
             minutes = int(body.get("value", 15))
             if minutes not in (15, 30, 60):
                 raise web.HTTPBadRequest(text="15, 30 or 60 minutes")
-            await self.ha_call("nest", "set_fan_timer", {"entity_id": sorted(zones), "duration": {"minutes": minutes}})
+            # Google refuses a fan timer on a thermostat that's off: run the fans on the levels that are on
+            on = sorted(z for z in zones if (self.live.states.get(z) or {}).get("state") in ("heat", "cool"))
+            if not on:
+                raise web.HTTPConflict(text="Every level is off; the fans only run on a level that's on")
+            await self.ha_call("nest", "set_fan_timer", {"entity_id": on, "duration": {"minutes": minutes}})
         elif entity in zones:
             house_mode = (self.live.states.get(self.climate_mode) or {}).get("state", "Off").lower()
             if op == "target":
@@ -452,7 +456,13 @@ def make_app(house: House) -> web.Application:
             return web.json_response({"error": str(ex)}, status=502)
 
     async def api_do(req):
-        await house.do(await req.json())
+        try:
+            await house.do(await req.json())
+        except web.HTTPException:
+            raise
+        except aiohttp.ClientResponseError as ex:
+            log.warning("Action failed: %s", ex)
+            return web.json_response({"ok": False, "reason": "Home Assistant refused that"}, status=502)
         return web.json_response({"ok": True})
 
     async def api_stream(req):
