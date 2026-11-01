@@ -158,3 +158,28 @@ def test_track_key_changes_with_the_song():
     a = {"title": "Kerala", "artist": "Bonobo", "album": "Migration", "art": "/api/x"}
     assert Board.track(a) != Board.track({**a, "title": "Break Apart"})
     assert Board.track(None) == ""
+
+
+def test_a_new_track_jumps_the_queue_in_the_morning():
+    b = _board()
+    b.music = {"title": "Kerala", "artist": "Bonobo", "album": "Migration", "art": "/a"}
+    b.np = dict(b.music)
+    b.showing = True
+    b.on_screen("music")
+    b.turn_at = 1000
+    b.on_screen("weather")
+    b.turn_at = 1180
+    assert b.choose(True, True, 1200) == "weather"           # same song: the weather keeps its turn
+    b.music = {**b.music, "title": "Break Apart"}
+    assert b.choose(True, True, 1200) == "music"             # new song: show it now
+
+
+def test_music_already_playing_on_arrival_lets_the_weather_go_first():
+    b = _board()
+    b.music = {"title": "Kerala", "artist": "Bonobo", "album": "Migration", "art": "/a"}
+    assert b.choose(True, True, 1000) == "weather"
+    b.showing = True
+    b.on_screen("weather")
+    b.turn_at = 1000
+    assert b.choose(True, True, 1010) == "weather"           # not bumped by a song that was already on
+    assert b.choose(True, True, 1180) == "music"

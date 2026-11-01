@@ -500,6 +500,7 @@ class Board:
         self.staged_kind: str | None = None
         self.turn: str | None = None       # what's on screen, and since when
         self.turn_at = 0.0
+        self.shown_track = ""              # the last track that made it onto the screen
 
     # ------------------------------------------------------------ data
     async def forecasts(self, entity: str, kind: str) -> list:
@@ -615,6 +616,10 @@ class Board:
     def on_screen(self, kind: str):
         if kind != self.turn:
             self.turn, self.turn_at = kind, time.time()
+        if kind == "music":
+            self.shown_track = self.track(self.np)
+        elif not self.shown_track:
+            self.shown_track = self.track(self.music)   # already playing when the board went up: not new
 
     async def stage(self, kind: str = "weather") -> dict:
         """Put a fresh picture of `kind` in the Frame's one board slot (on screen at once if the slot is showing)."""
@@ -662,6 +667,8 @@ class Board:
         if want_weather and want_music:
             if not self.showing or self.turn not in ("weather", "music"):
                 return "weather"
+            if self.turn == "weather" and self.track(self.music) != self.shown_track:
+                return "music"          # a new track jumps the queue; the weather gets its turn after
             if t - self.turn_at >= self.alternate:
                 return "music" if self.turn == "weather" else "weather"
             return self.turn
@@ -710,7 +717,7 @@ class Board:
                      "on" if self.showing else f"not shown ({r.get('reason')})")
         if self.showing and target is None:
             await self.frame_post("/api/board/hide")
-            self.showing, self.turn = False, None
+            self.showing, self.turn, self.shown_track = False, None, ""
             self.staged_kind, self.staged_at, self.has_picture = None, 0.0, False   # the Frame took it off the TV
             self.try_until = 0.0
             log.info("Frame: nothing to show; art's back")
