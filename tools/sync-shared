@@ -10,5 +10,5 @@ done
 echo "shared -> house, music, frame"
 # Stamp a content hash on the links so phones and browsers never keep an old copy.
 v=$(cat shared/appnav.js shared/tokens.css | sha1sum | cut -c1-8)
-sed -i -E "s#shared/(appnav\.js|tokens\.css)(\?v=[0-9a-f]+)?#shared/\1?v=$v#g" house/house/www/index.html music/music/www/index.html frame/frame_app.py
+sed -i -E "s#shared/(appnav\.js|tokens\.css)(\?v=[0-9a-f]+)?#shared/\1?v=$v#g" house/house/www/index.html house/house/www/guide.html music/music/www/index.html frame/frame_app.py
 echo "stamped v=$v"

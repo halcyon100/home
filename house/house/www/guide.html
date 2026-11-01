@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Guide</title>
+<link rel="stylesheet" href="shared/tokens.css?v=f518cf9c">
+<script src="shared/appnav.js?v=f518cf9c"></script>
+<style>
+/* The house guide: one long read, set like a good manual. Text column of about 68 characters,
+   contents on the left when there's room, tables that scroll sideways on a phone. */
+body{padding:env(safe-area-inset-top) 0 calc(var(--gut)*3)}
+.wrap{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(14px,2.2vw,30px) var(--gut) 0;
+  display:grid;grid-template-columns:minmax(0,1fr);gap:0 clamp(28px,5vw,72px)}
+@media (min-width:980px){.wrap{grid-template-columns:200px minmax(0,1fr)}}
+
+.toc{display:none}
+@media (min-width:980px){
+  .toc{display:block;position:sticky;top:18px;align-self:start;max-height:calc(100vh - 36px);overflow:auto;padding-top:.45em}
+  .toc a{display:block;padding:.28em 0;color:var(--quiet);text-decoration:none;font-size:var(--s-1);font-stretch:84%;line-height:1.3}
+  .toc a:hover,.toc a.here{color:var(--ink)}
+  .toc a.here{font-weight:560}
+}
+
+article{max-width:68ch;min-width:0}
+.meta{font-size:var(--s-1);font-stretch:84%;color:var(--quiet);margin:0 0 1.6em;letter-spacing:.01em}
+article h1{margin:0 0 .25em;font-size:var(--s5);line-height:1;font-weight:290;font-stretch:96%;letter-spacing:-.025em}
+article h2{margin:2.6em 0 .7em;padding-top:.9em;border-top:1px solid var(--hair);font-size:var(--s1);font-weight:600;
+  font-stretch:90%;letter-spacing:-.01em;line-height:1.2;scroll-margin-top:16px}
+article h3{margin:1.8em 0 .5em;font-size:var(--s0);font-weight:600;font-stretch:88%}
+article p{margin:0 0 1em;line-height:1.55}
+article ul{margin:0 0 1.2em;padding:0 0 0 1.1em}
+article li{margin:.38em 0;line-height:1.5;padding-left:.15em}
+article li::marker{color:var(--quiet)}
+article b{font-weight:600;font-stretch:96%}
+article code{font:inherit;font-size:.9em;font-stretch:84%;background:var(--well);padding:.08em .38em;border-radius:var(--r-s);
+  overflow-wrap:anywhere}
+article a{color:var(--ink);text-decoration-color:var(--quiet);text-underline-offset:.2em}
+
+/* Tables: hairlines only, narrow type, the first column a little stronger */
+.tbl{overflow-x:auto;margin:0 0 1.4em;-webkit-overflow-scrolling:touch}
+article table{border-collapse:collapse;width:100%;font-size:var(--s-1);font-stretch:88%;line-height:1.42;min-width:30em}
+article th{text-align:left;font-weight:600;color:var(--quiet);font-stretch:84%;letter-spacing:.01em;padding:.5em .9em .5em 0;
+  border-bottom:1px solid var(--hair);vertical-align:bottom}
+article td{padding:.6em .9em .6em 0;border-bottom:1px solid var(--hair);vertical-align:top}
+article td:first-child{font-weight:540;color:var(--ink);min-width:7em;max-width:16em}
+
+.empty{color:var(--quiet);max-width:40ch;line-height:1.5}
+.sk{display:block;height:.9em;margin:.7em 0;background:var(--well);border-radius:var(--r-s);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.5}}
+</style>
+</head>
+<body>
+<app-bar app="house" id="bar"><nav slot="tabs" class="app-tabs" aria-label="Guide"><span aria-selected="true">Guide</span></nav></app-bar>
+<div class="wrap">
+  <nav class="toc" id="toc" aria-label="Contents"></nav>
+  <article id="doc" aria-live="polite">
+    <i class="sk" style="width:60%;height:2.6em"></i><i class="sk" style="width:90%"></i><i class="sk" style="width:84%"></i><i class="sk" style="width:70%"></i>
+  </article>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+
+// Back goes to Home inside this app (the Guide is a page of House, not a separate app).
+$("bar").addEventListener("back", e => { e.preventDefault(); location.href = "./"; });
+
+/* ---------- Markdown, the small subset the guide uses ---------- */
+const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const slug = s => s.toLowerCase().replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+function inline(src){
+  const keep = [];
+  const stash = html => "\u0000" + (keep.push(html) - 1) + "\u0000";
+  let s = src.replace(/\\([\\`*_{}\[\]()#+\-.!~|>])/g, (_, c) => stash(esc(c)));          // backslash escapes
+  s = s.replace(/`([^`]+)`/g, (_, c) => stash("<code>" + esc(c) + "</code>"));
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) =>
+    stash(/^(https?:|#)/.test(u) ? `<a href="${esc(u)}"${u[0] === "#" ? "" : ' target="_blank" rel="noopener"'}>${esc(t)}</a>` : esc(t)));
+  s = esc(s);
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => keep[+i]);
+}
+
+const cells = line => line.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map(c => c.trim());
+
+function render(md){
+  const lines = md.replace(/\r/g, "").split("\n"), out = [], heads = [];
+  for (let i = 0; i < lines.length;){
+    const l = lines[i];
+    if (!l.trim()){ i++; continue; }
+    let m = l.match(/^(#{1,3})\s+(.*)$/);
+    if (m){
+      const n = m[1].length, html = inline(m[2]), id = slug(html);
+      if (n === 2) heads.push({id, html});
+      out.push(`<h${n} id="${id}">${html}</h${n}>`); i++; continue;
+    }
+    if (/^\s*\|/.test(l) && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1] || "")){
+      const head = cells(l); i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(cells(lines[i++]));
+      out.push(`<div class="tbl"><table><thead><tr>${head.map(h => `<th>${inline(h)}</th>`).join("")}</tr></thead><tbody>${
+        rows.map(r => `<tr>${head.map((_, k) => `<td>${inline(r[k] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
+    if (/^\s*[-*]\s+/.test(l)){
+      const items = [];
+      while (i < lines.length && lines[i].trim()){
+        if (/^\s*[-*]\s+/.test(lines[i])) items.push(lines[i].replace(/^\s*[-*]\s+/, ""));
+        else items[items.length - 1] += " " + lines[i].trim();
+        i++;
+      }
+      out.push("<ul>" + items.map(t => `<li>${inline(t)}</li>`).join("") + "</ul>");
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|\s*[-*]\s|\s*\|)/.test(lines[i])) para.push(lines[i++].trim());
+    out.push(`<p>${inline(para.join(" "))}</p>`);
+  }
+  return {html: out.join("\n"), heads};
+}
+
+/* ---------- Load ---------- */
+const KEY = "house-guide";
+function show(md, updated){
+  const {html, heads} = render(md);
+  const when = updated ? new Date(updated * 1000).toLocaleDateString("en-US", {month: "long", day: "numeric", year: "numeric"}) : "";
+  // The meta line goes right under the title
+  $("doc").innerHTML = html.replace(/(<\/h1>)/, `$1<p class="meta">${when ? "Updated " + when + " · " : ""}Kept on the house's hub, in every backup</p>`);
+  $("toc").innerHTML = heads.map(h => `<a href="#${h.id}">${h.html}</a>`).join("");
+  spy();
+  if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+}
+try { const c = JSON.parse(localStorage.getItem(KEY) || "null"); if (c) show(c.md, c.updated); } catch (e) {}
+
+fetch("api/guide", {cache: "no-store"}).then(async r => {
+  if (r.status === 404){
+    $("doc").innerHTML = `<h1>Guide</h1><p class="empty">No guide yet. Ask Claude to write how the house works, and it will appear here.</p>`;
+    return;
+  }
+  if (!r.ok) throw new Error(r.status);
+  const md = await r.text(), updated = +r.headers.get("X-Guide-Updated") || 0;
+  show(md, updated);
+  try { localStorage.setItem(KEY, JSON.stringify({md, updated})); } catch (e) {}
+}).catch(() => {
+  if (!$("doc").querySelector("h1")) $("doc").innerHTML = `<h1>Guide</h1><p class="empty">The house didn't answer. Pull to refresh.</p>`;
+});
+
+/* Contents: mark the section you're reading */
+let io = null;
+function spy(){
+  if (io) io.disconnect();
+  const links = [...$("toc").querySelectorAll("a")];
+  if (!links.length || !("IntersectionObserver" in window)) return;
+  io = new IntersectionObserver(es => {
+    es.forEach(e => { if (e.isIntersecting) links.forEach(a => a.classList.toggle("here", a.getAttribute("href") === "#" + e.target.id)); });
+  }, {rootMargin: "0px 0px -70% 0px"});
+  document.querySelectorAll("article h2").forEach(h => io.observe(h));
+}
+</script>
+</body>
+</html>

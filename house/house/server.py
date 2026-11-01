@@ -17,12 +17,14 @@ import aiohttp
 from aiohttp import web
 
 from board import Board, observed
+from guide import Guide
 from live import Live
 
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.15.0"
+VERSION = "0.16.0"
+INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -367,6 +369,7 @@ class House:
 def make_app(house: House) -> web.Application:
     app = web.Application()
     board = Board(house, house.opts)
+    guide = Guide()
 
     async def on_start(_app):
         house.session = aiohttp.ClientSession()
@@ -456,6 +459,31 @@ def make_app(house: House) -> web.Application:
         # what the Frame would get right now, for looking at
         return web.Response(body=await board.render(), content_type="image/jpeg")
 
+    async def guide_page(_req):
+        return web.FileResponse(WWW / "guide.html", headers={"Cache-Control": "no-cache"})
+
+    async def api_guide(_req):
+        text = guide.read()
+        if text is None:
+            raise web.HTTPNotFound(text="No guide yet.")
+        return web.Response(text=text, content_type="text/markdown", charset="utf-8",
+                            headers={"Cache-Control": "no-cache", "X-Guide-Updated": str(int(guide.updated() or 0))})
+
+    async def api_guide_save(req):
+        # Only through ingress, where Home Assistant has already signed the person (or Claude) in.
+        if req.remote != INGRESS:
+            raise web.HTTPForbidden(text="the guide is saved through Home Assistant only")
+        body = await req.json()
+        try:
+            res = guide.save(body.get("markdown"))
+        except ValueError as ex:
+            return web.json_response({"ok": False, "reason": str(ex)}, status=400)
+        log.info("Guide saved (%s bytes, changed=%s)", res["bytes"], res["changed"])
+        return web.json_response(res)
+
+    async def api_guide_versions(_req):
+        return web.json_response({"versions": guide.versions()})
+
     app.on_startup.append(on_start)
     app.on_cleanup.append(on_stop)
     app.router.add_get("/", index)
@@ -473,6 +501,10 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/frame/thumb/{cid}", frame_thumb)
     app.router.add_get("/api/board/status", api_board_status)
     app.router.add_post("/api/board/try", api_board_try)
+    app.router.add_get("/guide", guide_page)
+    app.router.add_get("/api/guide", api_guide)
+    app.router.add_put("/api/guide", api_guide_save)
+    app.router.add_get("/api/guide/versions", api_guide_versions)
     return app
 
 

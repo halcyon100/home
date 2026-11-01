@@ -220,6 +220,14 @@ ol.log.big{font-size:var(--s0)}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}.sky i,.state .spin{animation:none!important}}
 
+/* The guide: one quiet line at the foot of Home */
+.guide{display:grid;grid-template-columns:1fr auto;gap:.15em 1em;align-items:center;margin-top:clamp(28px,4vw,44px);padding:16px 0 4px;
+  border-top:1px solid var(--hair);color:var(--ink);text-decoration:none}
+.guide b{font-weight:560;font-stretch:92%}
+.guide span{grid-column:1;font-size:var(--s-1);font-stretch:86%;color:var(--quiet)}
+.guide i{grid-column:2;grid-row:1/3;font-style:normal;color:var(--quiet);font-size:var(--s1);transition:transform .2s}
+.guide:hover i{transform:translateX(3px);color:var(--ink)}
+
 /* Home: a tile per app, what you reach for underneath */
 #v-home .mast{margin-top:.2em}
 .hello{margin:.4em 0 .9em;font-size:var(--s3);font-weight:300;font-stretch:100%;letter-spacing:-.02em;line-height:1.08}
@@ -268,6 +276,7 @@ ol.log.big{font-size:var(--s0)}
     <div><h2>Shortcuts</h2><div class="acts" id="acts"></div></div>
     <div class="pinned" id="pinned-wrap"><h2>Pinned</h2><div id="pinned"></div></div>
   </section>
+  <a class="guide" href="guide"><b>How the house works</b><span>What each system is for, and why it behaves the way it does</span><i aria-hidden="true">→</i></a>
 </section>
 <section id="v-now" role="tabpanel" aria-label="Light" hidden>
   <header class="mast" id="mast"></header>
