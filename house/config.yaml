@@ -1,5 +1,5 @@
 name: House
-version: "0.17.3"
+version: "0.18.0"
 slug: house
 description: A quiet portal to the house - today's light, shortcuts, motion and what happened.
 url: https://github.com/halcyon100/home/tree/main/house
@@ -32,6 +32,7 @@ options:
   exclude: []
   floors: []
   rooms: []
+  climate: []
 schema:
   circadian_url: url
   weather: str?
@@ -49,6 +50,10 @@ schema:
   music_url: url?
   board_place: str?
   board_music: bool?
+  climate_mode: str?
+  climate:
+    - entity: str
+      name: str
   board_music_room: str?
   board_alternate_seconds: int?
   board_music_grace_seconds: int?

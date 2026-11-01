@@ -220,10 +220,34 @@ ol.log.big{font-size:var(--s0)}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}.sky i,.state .spin{animation:none!important}}
 
+/* Climate: the house mode, then each level as a line of type */
+.seg{display:inline-flex;border:1px solid var(--hair);border-radius:var(--r-pill);padding:3px;gap:2px}
+.seg button{appearance:none;border:0;background:none;color:var(--quiet);font:inherit;font-weight:500;font-stretch:90%;padding:.5em 1.25em .55em;border-radius:var(--r-pill);cursor:pointer}
+.seg button[aria-checked="true"]{background:var(--ink);color:var(--ground)}
+.seg.small button{padding:.35em 1em .4em;font-size:var(--s-1)}
+.seg button.busy{opacity:.5}
+.cl-mode{margin-top:clamp(18px,3vw,32px)}
+.cl-mode p,.fans p{margin:.8em 0 0;max-width:46ch}
+.zones{margin-top:clamp(28px,4vw,48px);border-top:1px solid var(--hair)}
+.zone{display:grid;grid-template-columns:minmax(7.5em,1fr) auto auto;gap:.2em 1.4em;align-items:center;padding:18px 0;border-bottom:1px solid var(--hair)}
+.zone .nm{font-weight:600;font-stretch:90%}
+.zone .st{grid-column:1;font-size:var(--s-1);font-stretch:86%;color:var(--quiet)}
+.zone .st b{color:var(--ink);font-weight:520}
+.zone .st b.heat{color:#F0A36B}.zone .st b.cool{color:#8EC5F2}
+.zone .now{grid-column:2;grid-row:1/3;font-size:var(--s3);font-weight:300;font-stretch:110%;letter-spacing:-.03em;line-height:1}
+.zone .ctl{grid-column:3;grid-row:1/3;display:flex;align-items:center;gap:.4em}
+.zone .ctl button{appearance:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--hair);background:none;color:var(--ink);font:inherit;font-size:20px;cursor:pointer;line-height:1}
+.zone .ctl .tgt{min-width:2.6em;text-align:center;font-weight:520;font-stretch:96%}
+.zone .ctl .pw{width:auto;border-radius:var(--r-pill);padding:0 1em;font-size:var(--s-1);font-stretch:90%}
+.zone.off .now{color:var(--quiet)}
+@media (max-width:520px){.zone{grid-template-columns:1fr auto}.zone .now{grid-column:2;grid-row:1}.zone .ctl{grid-column:1/-1;grid-row:3;margin-top:.5em}}
+.fans{margin-top:clamp(36px,5vw,56px)}
+
 /* The guide: one quiet line at the foot of Home */
 .guide{display:flex;gap:.5em 1.2em;flex-wrap:wrap;margin-top:clamp(28px,4vw,44px);padding-top:14px;border-top:1px solid var(--hair);
   font-size:var(--s-1);font-stretch:86%;color:var(--quiet)}
-.guide a{margin-left:auto;color:var(--ink);text-decoration:none}
+.guide a{color:var(--ink);text-decoration:none}
+.guide a.ha{margin-left:auto}
 .guide a:hover{text-decoration:underline;text-underline-offset:.2em}
 
 /* Home: a tile per app, what you reach for underneath */
@@ -262,6 +286,7 @@ ol.log.big{font-size:var(--s0)}
 <app-bar app="house" home home-title="Home" id="bar"><nav slot="tabs" class="app-tabs" role="tablist" aria-label="House">
   <button role="tab" data-v="now" aria-selected="true">Light</button>
   <button role="tab" data-v="devices" aria-selected="false">Devices</button>
+  <button role="tab" data-v="climate" aria-selected="false">Climate</button>
   <button role="tab" data-v="activity" aria-selected="false">Activity</button>
 </nav></app-bar>
 <div class="sky" aria-hidden="true"><i class="glow"></i><i class="stars"></i><i class="cloud"></i><i class="grey"></i><i class="fog"></i><i class="rain"></i><i class="snow"></i><i class="flash"></i></div>
@@ -274,7 +299,7 @@ ol.log.big{font-size:var(--s0)}
     <div><h2>Shortcuts</h2><div class="acts" id="acts"></div></div>
     <div class="pinned" id="pinned-wrap"><h2>Pinned</h2><div id="pinned"></div></div>
   </section>
-  <footer class="guide" id="about"><span id="rel"></span><span id="upd"></span><a href="guide">Details →</a></footer>
+  <footer class="guide" id="about"><span id="rel"></span><span id="upd"></span><a class="ha" data-ha href="#">Home Assistant</a><a href="guide">Details →</a></footer>
 </section>
 <section id="v-now" role="tabpanel" aria-label="Light" hidden>
   <header class="mast" id="mast"></header>
@@ -298,6 +323,13 @@ ol.log.big{font-size:var(--s0)}
   <nav class="jump" id="jump" aria-label="Find a device"></nav>
   <div class="dev-shades"><h2>Curtains and shades</h2><dl id="dshades"></dl></div>
   <div id="floors"><p class="err">Finding the rooms.</p></div>
+</section>
+<section id="v-climate" role="tabpanel" aria-label="Climate" hidden>
+  <div class="cl-mode"><div class="seg" id="clmode" role="radiogroup" aria-label="House mode"></div>
+    <p class="t-quiet">One mode for the whole house, never heat and cool at once. A level that's off stays off.</p></div>
+  <div class="zones" id="zones"></div>
+  <div class="fans"><h2>Fresh air</h2><div class="seg small" id="fans"><button data-fan="15">15 min</button><button data-fan="30">30 min</button><button data-fan="60">1 hour</button></div>
+    <p class="t-quiet">Runs the fans on every level, in any mode.</p></div>
 </section>
 <section id="v-activity" role="tabpanel" aria-label="Activity" hidden>
   <div class="field act-field">
@@ -555,6 +587,7 @@ function render(){
   }).join("") || `<dt class="err">No motion sensors chosen.</dt><dd></dd>`;
 
   $("alog").innerHTML = logRows(s.activity);
+  renderClimate();
   renderHome();
 }
 
@@ -669,7 +702,7 @@ let view = "home";
 function show(v){
   view = v;
   document.querySelectorAll(".app-tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.v===v));
-  ["home","now","devices","activity"].forEach(x=>$("v-"+x).hidden = x!==v);
+  ["home","now","devices","climate","activity"].forEach(x=>$("v-"+x).hidden = x!==v);
   $("bar").toggleAttribute("home", v==="home");
   try{ sessionStorage.setItem("house-view", v); }catch(e){}
   if (v==="devices") loadDevices();
@@ -698,7 +731,7 @@ function keep(k, v){ try{ localStorage.setItem(k, JSON.stringify({t: Date.now(),
 function kept(k, maxAge){ try{ const o = JSON.parse(localStorage.getItem(k)||"null"); return o && Date.now()-o.t < maxAge ? o.v : null; }catch(e){ return null; } }
 function renderHome(){
   if (!S){   // first ever visit: the shape of Home, while it loads
-    $("tiles").innerHTML = ["Light","Devices","Music","Frame","Activity","Home Assistant"].map(n=>`<div class="tile ghost"><b>${n}</b><div><div class="v"><i class="sk"></i></div><em><i class="sk short"></i></em></div></div>`).join("");
+    $("tiles").innerHTML = ["Light","Devices","Music","Frame","Activity","Climate"].map(n=>`<div class="tile ghost"><b>${n}</b><div><div class="v"><i class="sk"></i></div><em><i class="sk short"></i></em></div></div>`).join("");
     return;
   }
   const now = new Date(S.now), d = S.circadian, w = S.weather;
@@ -716,8 +749,40 @@ function renderHome(){
   tiles.push(`<button class="tile${f&&f.current&&!f.board?" media":""}" data-app="/3dd8a0cc_frame">${f&&f.current&&!f.board?`<span class="bg" style="background-image:url('frame/thumb/${encodeURIComponent(f.current)}')"></span>`:""}<b>Frame</b><div><div class="v">${!f?"Art":f.power!=="on"?"Asleep":f.board?"Kitchen board":"On the wall"}</div><em>${f&&f.board?"Showing the morning board":"Art, collections and schedule"}</em></div></button>`);
   const a = (S.activity||[])[0];
   tiles.push(`<button class="tile" data-view="activity"><b>Activity</b><div><div class="v vs">${a?esc(say(a)):"Quiet"}</div><em>${a?ago(a.when):"The last day in the house"}</em></div></button>`);
-  tiles.push(`<button class="tile" data-app="/lovelace/0"><b>Home Assistant</b><div><div class="v vs">Everything else</div><em>Settings, automations, all devices</em></div></button>`);
+  const c = S.climate;
+  if (c){
+    const running = c.zones.find(z=>z.action==="heating"||z.action==="cooling");
+    const temps = c.zones.map(z=>`${SHORT[z.name]||z.name} ${z.now!=null?Math.round(z.now)+"°":"–"}`).join(" · ");
+    tiles.push(`<button class="tile" data-view="climate"><b>Climate</b><div><div class="v">${esc(running?(running.action==="heating"?"Heating":"Cooling"):(c.mode||"–"))}</div><em>${esc(temps)}</em></div></button>`);
+  } else tiles.push(`<button class="tile" data-app="/lovelace/0"><b>Home Assistant</b><div><div class="v vs">Everything else</div><em>Settings, automations, all devices</em></div></button>`);
   $("tiles").innerHTML = tiles.join("");
+}
+
+/* Climate */
+const SHORT = {"Main Level":"Main","Upstairs":"Up","Basement":"Down"};
+const pend = {};          // targets tapped but not sent yet, by zone
+let pendTimer = {};
+function renderClimate(){
+  const c = S && S.climate;
+  if (!c){ $("zones").innerHTML = `<p class="err">No thermostats are set up in House's options.</p>`; return; }
+  $("clmode").innerHTML = ["Heat","Cool","Off"].map(m=>`<button role="radio" aria-checked="${c.mode===m}" data-clmode="${m}">${m}</button>`).join("");
+  $("zones").innerHTML = c.zones.map(z=>{
+    const on = z.mode==="heat"||z.mode==="cool", tgt = pend[z.entity] ?? z.target;
+    const st = !on ? "Off" : z.action==="heating" ? `<b class="heat">Heating</b> to ${Math.round(tgt)}°` :
+      z.action==="cooling" ? `<b class="cool">Cooling</b> to ${Math.round(tgt)}°` : `Holding ${tgt!=null?Math.round(tgt)+"°":""}${z.eco?" · Eco":""}`;
+    return `<div class="zone${on?"":" off"}"><span class="nm">${esc(z.name)}</span>
+      <span class="st">${st}${z.humidity!=null?` · ${Math.round(z.humidity)}% humidity`:""}</span>
+      <span class="now">${z.now!=null?Math.round(z.now)+"°":"–"}</span>
+      <span class="ctl">${on&&tgt!=null?`<button data-t="${esc(z.entity)}" data-d="-1" aria-label="Cooler">−</button><span class="tgt">${Math.round(tgt)}°</span><button data-t="${esc(z.entity)}" data-d="1" aria-label="Warmer">+</button>`:""}
+        <button class="pw" data-zone="${esc(z.entity)}" data-op="${on?"off":"on"}"${!on&&c.mode==="Off"?" disabled title='Choose Heat or Cool first'":""}>${on?"Turn off":"Turn on"}</button></span></div>`;
+  }).join("");
+}
+function nudge(entity, d){
+  const z = S.climate.zones.find(x=>x.entity===entity); if (!z) return;
+  pend[entity] = Math.max(50, Math.min(90, Math.round((pend[entity] ?? z.target) + d)));
+  renderClimate();
+  clearTimeout(pendTimer[entity]);
+  pendTimer[entity] = setTimeout(()=>{ const v = pend[entity]; act({entity, op:"target", value:v}, null, ()=>{ delete pend[entity]; refresh(); }); }, 800);
 }
 
 function say(a){
@@ -768,7 +833,17 @@ document.addEventListener("click",e=>{
   }
   if (b){ armedFor = null; const tog = b.hasAttribute("aria-pressed"); act({entity:b.dataset.e, op: tog ? (b.getAttribute("aria-pressed")==="true"?"off":"on") : "run"}, b); return; }
   const c = e.target.closest("[data-c]");
-  if (c) act({entity:c.dataset.c, op:c.dataset.op}, c);
+  if (c){ act({entity:c.dataset.c, op:c.dataset.op}, c); return; }
+  const cm = e.target.closest("[data-clmode]");
+  if (cm){ if (S.climate) S.climate.mode = cm.dataset.clmode; renderClimate(); act({op:"climate_mode", value:cm.dataset.clmode}); return; }
+  const tt = e.target.closest("[data-t]");
+  if (tt){ nudge(tt.dataset.t, +tt.dataset.d); return; }
+  const zn = e.target.closest("[data-zone]");
+  if (zn && !zn.disabled){ act({entity:zn.dataset.zone, op:zn.dataset.op}, zn); return; }
+  const fan = e.target.closest("[data-fan]");
+  if (fan){ fan.classList.add("busy"); act({op:"fan", value:+fan.dataset.fan}, null, ()=>{ fan.classList.remove("busy"); fan.setAttribute("aria-checked","true"); }); return; }
+  const ha = e.target.closest("[data-ha]");
+  if (ha){ e.preventDefault(); window.appGo && window.appGo("/lovelace/0"); }
 });
 
 /* Scrub the day: point or drag across the graph to read any moment. */

@@ -23,7 +23,7 @@ from live import Live
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.17.3"
+VERSION = "0.18.0"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -41,6 +41,9 @@ class House:
         self.token = os.environ.get("SUPERVISOR_TOKEN", "")
         self.circadian = opts.get("circadian_url", "http://3dd8a0cc-circadian:8810")
         self.shortcuts = opts.get("shortcuts", []) or []
+        # Heating and cooling: the house mode (one for the whole house) and the zones, by level
+        self.climate_mode = opts.get("climate_mode", "input_select.house_climate")
+        self.climate = [z for z in (opts.get("climate") or []) if z.get("entity")]
         self.shades = opts.get("shades", []) or []
         self.motion = opts.get("motion", []) or []
         self.activity = opts.get("activity", []) or []
@@ -299,7 +302,22 @@ class House:
             "shades": [x for x in (pick(e) for e in self.shades) if x],
             "motion": [x for x in (pick(e) for e in self.motion) if x],
             "activity": log_rows,
+            "climate": self.climate_state(by),
         }
+
+    def climate_state(self, by: dict) -> dict | None:
+        if not self.climate:
+            return None
+        zones = []
+        for z in self.climate:
+            s = by.get(z["entity"]) or {}
+            a = s.get("attributes", {})
+            zones.append({"entity": z["entity"], "name": z.get("name") or a.get("friendly_name"),
+                          "mode": s.get("state"), "action": a.get("hvac_action"),
+                          "now": a.get("current_temperature"), "target": a.get("temperature"),
+                          "humidity": a.get("current_humidity"), "eco": a.get("preset_mode") == "eco",
+                          "fan": a.get("fan_mode")})
+        return {"mode": (by.get(self.climate_mode) or {}).get("state"), "zones": zones}
 
     async def _json(self, url: str, timeout: float = 4):
         try:
@@ -341,7 +359,34 @@ class House:
         entity, op = body.get("entity"), body.get("op")
         sc = {s["entity"]: s for s in self.shortcuts}
         domain = (entity or "").split(".")[0]
-        if entity in sc:
+        zones = {z["entity"] for z in self.climate}
+        if op == "climate_mode" and self.climate:
+            mode = body.get("value")
+            if mode not in ("Heat", "Cool", "Off"):
+                raise web.HTTPBadRequest(text="Heat, Cool or Off")
+            await self.ha_call("input_select", "select_option", {"entity_id": self.climate_mode, "option": mode})
+        elif op == "fan" and self.climate:
+            minutes = int(body.get("value", 15))
+            if minutes not in (15, 30, 60):
+                raise web.HTTPBadRequest(text="15, 30 or 60 minutes")
+            await self.ha_call("nest", "set_fan_timer", {"entity_id": sorted(zones), "duration": {"minutes": minutes}})
+        elif entity in zones:
+            house_mode = (self.live.states.get(self.climate_mode) or {}).get("state", "Off").lower()
+            if op == "target":
+                t = float(body.get("value"))
+                if not 50 <= t <= 90:
+                    raise web.HTTPBadRequest(text="50 to 90 degrees")
+                await self.ha_call("climate", "set_temperature", {"entity_id": entity, "temperature": t})
+            elif op == "on":
+                # a zone only ever comes on in the house's mode
+                if house_mode == "off":
+                    raise web.HTTPConflict(text="Choose Heat or Cool for the house first")
+                await self.ha_call("climate", "set_hvac_mode", {"entity_id": entity, "hvac_mode": house_mode})
+            elif op == "off":
+                await self.ha_call("climate", "set_hvac_mode", {"entity_id": entity, "hvac_mode": "off"})
+            else:
+                raise web.HTTPBadRequest(text="unsupported")
+        elif entity in sc:
             if domain in ("script", "scene"):
                 await self.ha_call(domain, "turn_on", {"entity_id": entity})
             elif domain == "input_boolean" and op in ("on", "off"):
