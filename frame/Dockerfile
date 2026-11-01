@@ -13,7 +13,7 @@ RUN apt-get update \
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY frame_app.py seed_state.json /app/
+COPY frame_app.py /app/
 COPY shared/ /app/shared/
 
 WORKDIR /app

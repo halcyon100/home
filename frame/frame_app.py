@@ -65,7 +65,7 @@ def _ha_option(key, default):
 
 
 APP_VERSION = "1.3.1"
-TV_IP = os.environ.get("FRAME_IP") or _ha_option("tv_ip", "")
+TV_IP = os.environ.get("FRAME_IP") or _ha_option("tv_ip", "")   # set in the app's options
 PORT = int(os.environ.get("FRAME_PORT", "8800"))
 WATCHDOG_EVERY = 60  # seconds
 PORTRAIT = (2160, 3840)  # width x height for a portrait-mounted 4K Frame
@@ -1383,18 +1383,45 @@ def api_display_set(p: dict) -> dict:
 
 
 # ---------------------------------------------------------------- sunrise / sunset
-HOME_LAT, HOME_LON = 43.07, -89.40  # placeholder location
+_HOME = {}
 
 
-def sun_times(day=None, lat=HOME_LAT, lon=HOME_LON):
+def home_location():
+    """Where the house is, for sunrise and sunset. Never in the code: the app's options (latitude,
+    longitude) if set, otherwise Home Assistant's own home location. (None, None) if neither answers."""
+    if "ll" not in _HOME:
+        lat, lon = _ha_option("latitude", None), _ha_option("longitude", None)
+        if lat is None or lon is None:
+            token = os.environ.get("SUPERVISOR_TOKEN")
+            if token:
+                import urllib.request
+                try:
+                    req = urllib.request.Request("http://supervisor/core/api/config",
+                                                 headers={"Authorization": "Bearer " + token})
+                    with urllib.request.urlopen(req, timeout=10) as r:
+                        c = json.load(r)
+                    lat, lon = c.get("latitude"), c.get("longitude")
+                except Exception as e:
+                    log.info("Couldn't read the home location from Home Assistant (%s)", e)
+                    return None, None   # try again next time
+        _HOME["ll"] = (float(lat), float(lon)) if lat is not None and lon is not None else (None, None)
+    return _HOME["ll"]
+
+
+def sun_times(day=None, lat=None, lon=None):
     """Local (sunrise, sunset) datetimes for a date, computed offline.
 
     Standard almanac algorithm (zenith 90.833 deg: sun's upper edge at the
-    horizon, with refraction). Accurate to about a minute.
+    horizon, with refraction). Accurate to about a minute. With no location known,
+    7:00 and 19:00 stand in.
     """
     import math
     from datetime import date as _date, datetime as _dt, timedelta, timezone
     day = day or _date.today()
+    if lat is None or lon is None:
+        lat, lon = home_location()
+    if lat is None or lon is None:
+        return _dt(day.year, day.month, day.day, 7), _dt(day.year, day.month, day.day, 19)
     rad, deg = math.radians, math.degrees
     n = day.timetuple().tm_yday
     lng_hour = lon / 15.0
@@ -1811,11 +1838,11 @@ PAGE = r"""<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Frame">
 <title>Frame</title>
-<link rel="stylesheet" href="shared/tokens.css?v=f518cf9c">
-<script src="shared/appnav.js?v=f518cf9c"></script>
+<link rel="stylesheet" href="shared/tokens.css?v=093bc8c2">
+<script src="shared/appnav.js?v=093bc8c2"></script>
 <style>
 :root{
-  /* Frame speaks the house's shared tokens (shared/tokens.css?v=f518cf9c); these names map onto them. */
+  /* Frame speaks the house's shared tokens (shared/tokens.css?v=093bc8c2); these names map onto them. */
   --wall:var(--ground); --wall-deep:var(--ground); --wall-lift:var(--well);
   --plaster:var(--ink); --sage:var(--quiet); --brass:var(--ink); --brass-deep:var(--ink);
   --bezel:#141614; --danger:var(--alert);
@@ -1873,7 +1900,7 @@ select,input{max-width:100%}
 .switch strong{display:block;font-weight:560;font-stretch:96%}
 .switch small{display:block;color:var(--sage);font-size:14px;margin-top:2px}
 
-/* buttons come from shared/tokens.css?v=f518cf9c; brass is the main action */
+/* buttons come from shared/tokens.css?v=093bc8c2; brass is the main action */
 .btn.brass{}
 
 /* library */
@@ -2067,7 +2094,7 @@ details.panel:not([open])>summary{margin-bottom:0}
 }
 @media (max-height:520px){ .tv{max-width:150px} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
-/* shared app bar: layout from shared/tokens.css?v=f518cf9c */
+/* shared app bar: layout from shared/tokens.css?v=093bc8c2 */
 
 /* ---------- v1.5 layout: three views under the shared bar, House type and spacing ---------- */
 .fview{max-width:calc(var(--maxw) + 2*var(--gut));margin:0 auto;padding:clamp(14px,2vw,26px) var(--gut) 64px}

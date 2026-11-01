@@ -16,7 +16,7 @@ reached at `http://<home-assistant>:8800`.
 Settings (Configuration tab): `tv_ip`, the Frame's address on the network.
 
 State, cache and logs live in the app's `/data` folder, so they survive updates. On first start,
-`seed_state.json` provides the collections and schedule carried over from the laptop version.
+Collections, the schedule and the TV address live in the app's own storage and options on your Home Assistant box, not in this repository. The location for sunrise and sunset comes from Home Assistant.
 
 ## Releasing a change
 Bump `version` in `config.yaml`, push, then click **Update** on the app in Home Assistant.

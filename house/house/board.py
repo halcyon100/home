@@ -544,7 +544,7 @@ class Board:
         elif sun.get("next_rising"):
             sunrise = datetime.fromisoformat(sun["next_rising"])
         place = cfg.get("location_name") or ""
-        place = h.opts.get("board_place") or ("" if place in ("", "Home") else place)
+        place = h.opts.get("board_place") or ("" if place in ("", "Home") else place)   # set in the app's options
         b = build(datetime.now(self.tz), self.tz, current, hourly, daily, sunrise, pollen,
                   house_line(inside, day, pollen, damp), place, sunset)
         # The day, together: outside temperature, the sun's height and the house's light on one clock
