@@ -120,3 +120,41 @@ def test_moon_arc_rises_late_and_peaks_before_dawn_this_week():
     at = lambda h: datetime(2026, 10, 31, h, tzinfo=TZ)  # noqa: E731
     assert moon_elevation(at(18), 43.07, -89.40) < 0      # waning gibbous: not up at dusk
     assert moon_elevation(at(6), 43.07, -89.40) > 50      # high before sunrise
+
+
+class _House:
+    opts = {}
+
+
+def _board():
+    from board import Board
+    b = Board(_House(), {"board_alternate_seconds": 180})
+    return b
+
+
+def test_music_alone_shows_music_weather_alone_shows_weather():
+    b = _board()
+    assert b.choose(False, True, 1000) == "music"
+    assert b.choose(True, False, 1000) == "weather"
+    assert b.choose(False, False, 1000) is None
+
+
+def test_morning_with_music_takes_turns_starting_with_weather():
+    b = _board()
+    assert b.choose(True, True, 1000) == "weather"          # nothing up yet: the morning board first
+    b.showing = True
+    b.on_screen("weather")
+    b.turn_at = 1000
+    assert b.choose(True, True, 1100) == "weather"          # its turn isn't over
+    assert b.choose(True, True, 1180) == "music"            # three minutes: the record's turn
+    b.on_screen("music")
+    b.turn_at = 1180
+    assert b.choose(True, True, 1300) == "music"
+    assert b.choose(True, True, 1360) == "weather"
+
+
+def test_track_key_changes_with_the_song():
+    from board import Board
+    a = {"title": "Kerala", "artist": "Bonobo", "album": "Migration", "art": "/api/x"}
+    assert Board.track(a) != Board.track({**a, "title": "Break Apart"})
+    assert Board.track(None) == ""

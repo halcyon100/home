@@ -23,7 +23,7 @@ from live import Live
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.16.1"
+VERSION = "0.17.0"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -443,7 +443,8 @@ def make_app(house: House) -> web.Application:
             return web.json_response({"error": str(ex)}, status=502)
 
     async def api_board_status(_req):
-        return web.json_response({"enabled": board.enabled, "showing": board.showing,
+        return web.json_response({"enabled": board.enabled, "showing": board.showing, "kind": board.staged_kind,
+                                  "music": board.music,
                                   "staged_at": board.staged_at, "has_picture": board.has_picture,
                                   "window": board.in_window(datetime.now(board.tz)), "error": board.last_error})
 
@@ -481,6 +482,26 @@ def make_app(house: House) -> web.Application:
         log.info("Guide saved (%s bytes, changed=%s)", res["bytes"], res["changed"])
         return web.json_response(res)
 
+    async def nowplaying_page(_req):
+        return web.FileResponse(WWW / "nowplaying.html", headers={"Cache-Control": "no-cache"})
+
+    async def api_nowplaying(_req):
+        # The track on the Now playing picture (the page Chromium renders for the Frame).
+        n = board.np or board.music
+        if not n:
+            return web.json_response({})
+        return web.json_response({**n, "art": "np/art?k=" + str(abs(hash(n["art"])))})
+
+    async def np_art(_req):
+        n = board.np or board.music
+        if not n or not str(n.get("art", "")).startswith("/api/"):
+            raise web.HTTPNotFound()
+        async with house.session.get("http://supervisor/core" + n["art"], headers=house.hdr(),
+                                     timeout=aiohttp.ClientTimeout(total=15)) as r:
+            if r.status != 200:
+                raise web.HTTPNotFound()
+            return web.Response(body=await r.read(), content_type=r.content_type or "image/jpeg")
+
     async def api_about(_req):
         # The foot of Home: which release is running, and when the guide last changed.
         return web.json_response({"version": VERSION, "updated": int(guide.updated() or 0)})
@@ -510,6 +531,9 @@ def make_app(house: House) -> web.Application:
     app.router.add_put("/api/guide", api_guide_save)
     app.router.add_get("/api/guide/versions", api_guide_versions)
     app.router.add_get("/api/about", api_about)
+    app.router.add_get("/nowplaying", nowplaying_page)
+    app.router.add_get("/api/nowplaying", api_nowplaying)
+    app.router.add_get("/np/art", np_art)
     return app
 
 

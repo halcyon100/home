@@ -600,7 +600,8 @@ def _mqtt_settings():
 def art_summary(on: bool) -> dict:
     """What the Frame is showing, in words, for Home Assistant (and so the voice assistant)."""
     p = STATE.get("playing") or {}
-    board = bool(board_state().get("showing"))
+    bs = board_state()
+    board = bool(bs.get("showing"))
     label = label_for(p["target"]) if p else None
     mins = p.get("minutes") if p else None
     every = None
@@ -609,7 +610,7 @@ def art_summary(on: bool) -> dict:
     if not on:
         state = "Asleep"
     elif board:
-        state = "Kitchen board"
+        state = bs.get("label") or "Kitchen board"
     elif label:
         state = "%s, changing %s" % (label, every) if every else label
     else:
@@ -618,7 +619,7 @@ def art_summary(on: bool) -> dict:
     return {"state": state, "collection": label, "rotating": bool(p), "change_every_minutes": mins,
             "rotated_by": p.get("mode") if p else None, "picture": p.get("last") if p else None,
             "next_change": datetime.fromtimestamp(nxt).astimezone().isoformat() if nxt else None,
-            "kitchen_board": board}
+            "kitchen_board": board, "board_label": bs.get("label") if board else None}
 
 
 def publish_state(power=None) -> None:
@@ -1216,7 +1217,7 @@ def _board_drop(cid: str) -> None:
             log.info("Board: couldn't remove %s from the TV (%s)", cid, e)
 
 
-def api_board_stage(jpeg: bytes) -> dict:
+def api_board_stage(jpeg: bytes, label: str = "") -> dict:
     img = Image.open(io.BytesIO(jpeg))
     if img.size != PORTRAIT or img.format != "JPEG":
         jpeg = prepare(jpeg, 0.5, 0.5)
@@ -1231,11 +1232,14 @@ def api_board_stage(jpeg: bytes) -> dict:
         if b.get("showing"):
             TVC.call(lambda a: a.select_image(cid, show=True))
         b["id"], b["staged_at"] = cid, time.time()
+        b["label"] = label or "Kitchen board"   # what it is, for the Showing sensor: the board, or Now playing
         STATE.set("board", b)
         LIB_CACHE["t"] = 0
     if old and old != cid:
         _board_drop(old)
     log.info("Board staged as %s (%d KB)%s", cid, len(jpeg) // 1024, ", on screen" if b.get("showing") else "")
+    if b.get("showing"):
+        threading.Thread(target=publish_state, daemon=True).start()   # weather and music take turns: say which
     return {"ok": True, "id": cid, "showing": bool(b.get("showing"))}
 
 
@@ -1695,7 +1699,8 @@ class Handler(BaseHTTPRequestHandler):
                                            "For iPhone HEIC photos, run: pip3 install pillow-heif"}, 400)
                 return self.send_json(api_upload(body, fx, fy, show, prepared, collection, recipe, replace))
             if url.path == "/api/board/stage":
-                return self.send_json(api_board_stage(self.read_body(30 * 1024 * 1024)))
+                label = (q.get("label") or [""])[0][:40]
+                return self.send_json(api_board_stage(self.read_body(30 * 1024 * 1024), label))
             if url.path == "/api/board/show":
                 return self.send_json(api_board_show())
             if url.path == "/api/board/hide":

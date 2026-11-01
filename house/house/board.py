@@ -463,7 +463,7 @@ def _hhmm(v: str, fallback: str) -> tuple[int, int]:
 
 
 class Board:
-    """Renders the board, keeps a fresh copy staged on the Frame through the morning, and shows it on arrival."""
+    """Runs the Frame's one board slot: the morning weather board on arrival, and the kitchen's record whenever one plays."""
 
     def __init__(self, house, opts: dict):
         self.house = house
@@ -488,6 +488,18 @@ class Board:
         self.has_picture = False
         self.try_until = 0.0     # "show it now", from the House page, for a few minutes
         self.tz = ZoneInfo("America/Chicago")
+        # Now playing: whenever the kitchen plays a record, the Frame shows its sleeve; with the morning
+        # board up too, the two take turns.
+        self.music_on = bool(opts.get("board_music", True))
+        self.music_room = opts.get("board_music_room", "Kitchen")
+        self.alternate = int(opts.get("board_alternate_seconds", 180))
+        self.music_grace = int(opts.get("board_music_grace_seconds", 120))   # a pause between albums isn't the end
+        self.music: dict | None = None
+        self.music_seen = 0.0
+        self.np: dict | None = None        # the track on the staged Now playing picture
+        self.staged_kind: str | None = None
+        self.turn: str | None = None       # what's on screen, and since when
+        self.turn_at = 0.0
 
     # ------------------------------------------------------------ data
     async def forecasts(self, entity: str, kind: str) -> list:
@@ -548,15 +560,36 @@ class Board:
         b["pollen"] = pollen
         return b
 
+    # ------------------------------------------------------------ what's playing in the kitchen
+    async def music_now(self) -> dict | None:
+        """The kitchen's record, when it's playing one with a sleeve (not TV sound, not a bare line-in)."""
+        if not self.music_on:
+            return None
+        url = self.house.opts.get("music_url", "http://3dd8a0cc-music:8097").rstrip("/")
+        now = await self.house.cached("board-music", 4, lambda: self.house._json(f"{url}/api/now"))
+        for r in (now or {}).get("rooms", []):
+            if r.get("name") != self.music_room:
+                continue
+            if r.get("state") != "playing" or r.get("tv") or not r.get("art") or not r.get("title"):
+                return None
+            others = [g for g in r.get("group") or [] if g not in (r["name"], "Turntable")]
+            return {"title": r["title"], "artist": r.get("artist") or "", "album": r.get("album") or "",
+                    "art": r["art"], "rooms": [r["name"]] + others}
+        return None
+
+    @staticmethod
+    def track(m: dict | None) -> str:
+        return json.dumps([m.get(k) for k in ("title", "artist", "album", "art")]) if m else ""
+
     # ------------------------------------------------------------ picture
-    async def render(self) -> bytes:
-        """The page, as the Frame's 2160 × 3840 JPEG."""
+    async def render(self, page: str = "board") -> bytes:
+        """A page, as the Frame's 2160 × 3840 JPEG."""
         from PIL import Image
-        out = "/tmp/board.png"
+        out = f"/tmp/{page}.png"
         proc = await asyncio.create_subprocess_exec(
             "chromium", "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--mute-audio",
             "--force-device-scale-factor=2", "--window-size=1080,1920", "--virtual-time-budget=10000",
-            f"--screenshot={out}", "http://127.0.0.1:8099/board",
+            f"--screenshot={out}", f"http://127.0.0.1:8099/{page}",
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
         _, err = await asyncio.wait_for(proc.communicate(), timeout=60)
         if proc.returncode != 0:
@@ -579,24 +612,36 @@ class Board:
         """What the board would show, minus its clock: two boards that look the same give the same string."""
         return json.dumps({k: v for k, v in b.items() if k != "asof"}, sort_keys=True, default=str)
 
-    async def stage(self) -> dict:
-        self.staged_looks = self.looks(await self.data())
-        self.checked = self.house.live.version
-        jpeg = await self.render()
-        r = await self.frame_post("/api/board/stage", jpeg)
+    def on_screen(self, kind: str):
+        if kind != self.turn:
+            self.turn, self.turn_at = kind, time.time()
+
+    async def stage(self, kind: str = "weather") -> dict:
+        """Put a fresh picture of `kind` in the Frame's one board slot (on screen at once if the slot is showing)."""
+        if kind == "music":
+            self.np = self.music
+            looks, page, label = self.track(self.np), "nowplaying", "Now playing"
+        else:
+            looks, page, label = self.looks(await self.data()), "board", "Kitchen board"
+            self.checked = self.house.live.version
+        jpeg = await self.render(page)
+        r = await self.frame_post(f"/api/board/stage?label={label.replace(' ', '%20')}", jpeg)
         if r.get("ok"):
+            self.staged_kind, self.staged_looks = kind, looks
             self.staged_at = time.time()
             self.has_picture = True
+            if self.showing:
+                self.on_screen(kind)
         return r
 
-    async def _stage_bg(self):
+    async def _stage_bg(self, kind: str):
         try:
-            r = await self.stage()
+            r = await self.stage(kind)
             if not r.get("ok"):
                 log.info("Board not staged: %s", r.get("reason"))
                 self.staged_at = time.time() - self.every + 60   # try again in a minute
         except Exception as ex:
-            log.warning("Board: staging failed: %s", ex)
+            log.warning("Board: staging %s failed: %s", kind, ex)
             self.staged_at = time.time() - self.every + 60
         finally:
             self.staging = None
@@ -612,46 +657,78 @@ class Board:
         st = await self.house.ha_get(f"/states/{self.sensor}")
         return st.get("state") == "on"
 
+    def choose(self, want_weather: bool, want_music: bool, t: float) -> str | None:
+        """What the Frame's board slot should show now. Both wanted: they take turns."""
+        if want_weather and want_music:
+            if not self.showing or self.turn not in ("weather", "music"):
+                return "weather"
+            if t - self.turn_at >= self.alternate:
+                return "music" if self.turn == "weather" else "weather"
+            return self.turn
+        return "music" if want_music else "weather" if want_weather else None
+
     async def tick(self):
-        now = datetime.now(self.tz)
-        trying = time.time() < self.try_until
-        here = await self.present() or trying
-        if here:
-            self.last_seen = time.time()
-        window = self.in_window(now) or trying
-        age = time.time() - self.staged_at
-        if window and not self.staging:
-            if age > self.every:
-                self.staging = asyncio.create_task(self._stage_bg())
-            elif (self.has_picture and self.house.live.version != self.checked
-                  and age > (self.gap_showing if self.showing else self.gap_waiting)):
-                # Something changed in the house: redraw only if the board would look different.
-                self.checked = self.house.live.version
-                if self.looks(await self.data()) != self.staged_looks:
-                    self.staging = asyncio.create_task(self._stage_bg())
-        if window and here and not self.showing and self.has_picture:
+        t = time.time()
+        trying = t < self.try_until
+        if await self.present() or trying:
+            self.last_seen = t
+        window = self.in_window(datetime.now(self.tz)) or trying
+        grace = 5 if self.try_until else self.linger
+        want_weather = window and self.last_seen > 0 and t - self.last_seen <= grace
+        m = await self.music_now()
+        if m:
+            self.music, self.music_seen = m, t
+        want_music = self.music is not None and t - self.music_seen <= self.music_grace
+        if not want_music:
+            self.music = None
+        target = self.choose(want_weather, want_music, t)
+
+        # Keep the right picture staged: what's wanted now, or (mornings) the weather, ready for arrival
+        prep = target or ("weather" if window else None)
+        age = t - self.staged_at
+        if prep and not self.staging:
+            if self.staged_kind != prep or not self.has_picture:
+                self.staging = asyncio.create_task(self._stage_bg(prep))
+            elif prep == "music" and self.staged_looks != self.track(self.music):
+                self.staging = asyncio.create_task(self._stage_bg("music"))      # the next track
+            elif prep == "weather":
+                if age > self.every:
+                    self.staging = asyncio.create_task(self._stage_bg("weather"))
+                elif (self.house.live.version != self.checked
+                      and age > (self.gap_showing if self.showing else self.gap_waiting)):
+                    # Something changed in the house: redraw only if the board would look different.
+                    self.checked = self.house.live.version
+                    if self.looks(await self.data()) != self.staged_looks:
+                        self.staging = asyncio.create_task(self._stage_bg("weather"))
+
+        if target and not self.showing and self.has_picture and self.staged_kind == target:
             r = await self.frame_post("/api/board/show")
             self.showing = bool(r.get("ok"))
-            log.info("Kitchen: someone's here; board %s", "on" if self.showing else f"not shown ({r.get('reason')})")
-        if self.showing and not here and time.time() - self.last_seen > (5 if self.try_until else self.linger):
+            if self.showing:
+                self.on_screen(target)
+            log.info("Frame: %s %s", "now playing" if target == "music" else "kitchen board",
+                     "on" if self.showing else f"not shown ({r.get('reason')})")
+        if self.showing and target is None:
             await self.frame_post("/api/board/hide")
-            self.showing = False
-            self.staged_at, self.has_picture = 0.0, False   # the Frame took it off the TV; stage a fresh one
+            self.showing, self.turn = False, None
+            self.staged_kind, self.staged_at, self.has_picture = None, 0.0, False   # the Frame took it off the TV
             self.try_until = 0.0
-            log.info("Kitchen empty for %d min; art's back", self.linger // 60)
-        if not window and not self.showing and self.has_picture and not self.staging:
+            log.info("Frame: nothing to show; art's back")
+        if not window and target is None and not self.showing and self.has_picture and not self.staging:
             await self.frame_post("/api/board/hide")   # take the staged picture off the TV for the day
-            self.staged_at, self.has_picture = 0.0, False
+            self.staged_kind, self.staged_at, self.has_picture = None, 0.0, False
 
     async def try_now(self, minutes: int = 3) -> dict:
-        """Put the board up now, whatever the time, and take it down after a few minutes."""
-        r = await self.stage()
+        """Put the weather board up now, whatever the time, and take it down after a few minutes."""
+        r = await self.stage("weather")
         if not r.get("ok"):
             return r
         self.try_until = time.time() + minutes * 60
         self.last_seen = time.time()
         r = await self.frame_post("/api/board/show")
         self.showing = bool(r.get("ok"))
+        if self.showing:
+            self.on_screen("weather")
         return r
 
     async def loop(self):

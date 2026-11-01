@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>Now playing</title>
+<style>
+@font-face{font-family:"Archivo";src:url("shared/archivo.woff2") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%}
+/* The Frame, on its side: 2160 × 3840, drawn at 1080 × 1920 and captured at 2×.
+   The record is the picture: its sleeve large, its own colors washed behind it, the words set quietly below. */
+:root{--ink:#F4F1EA;--quiet:rgb(244 241 234 / .66);--hair:rgb(244 241 234 / .24)}
+html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#0E151C}
+body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-settings:"tnum" 1,"case" 1;-webkit-font-smoothing:antialiased}
+.wash{position:absolute;inset:-12%;background-size:cover;background-position:center;filter:blur(90px) saturate(1.25) brightness(.62);transform:scale(1.1)}
+.veil{position:absolute;inset:0;background:linear-gradient(180deg,rgb(8 12 16 / .10) 0%,rgb(8 12 16 / .18) 50%,rgb(8 12 16 / .62) 100%)}
+.page{position:absolute;inset:0;padding:120px 88px 92px;display:flex;flex-direction:column}
+.sleeve{width:904px;height:904px;border-radius:6px;background-size:cover;background-position:center;
+  box-shadow:0 40px 90px rgb(0 0 0 / .45),0 0 0 1px rgb(255 255 255 / .06)}
+.words{margin-top:84px}
+.title{margin:0;font-weight:300;font-stretch:96%;letter-spacing:-.03em;line-height:1.02;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.artist{margin:30px 0 0;font-size:50px;font-weight:540;font-stretch:92%;letter-spacing:-.012em;line-height:1.1}
+.album{margin:14px 0 0;font-size:38px;font-weight:380;font-stretch:90%;color:var(--quiet);line-height:1.2;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.foot{margin-top:auto;padding-top:28px;border-top:1px solid var(--hair);display:flex;justify-content:space-between;
+  font-size:30px;font-stretch:86%;color:var(--quiet);letter-spacing:.005em}
+.foot b{font-weight:540;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wash" id="wash"></div><div class="veil"></div>
+<div class="page">
+  <div class="sleeve" id="sleeve"></div>
+  <div class="words">
+    <h1 class="title" id="title"></h1>
+    <p class="artist" id="artist"></p>
+    <p class="album" id="album"></p>
+  </div>
+  <div class="foot"><span>Now playing</span><span id="rooms"></span></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+fetch("api/nowplaying", {cache: "no-store"}).then(r => r.json()).then(n => {
+  if (!n || !n.title) return;
+  const art = n.art ? `url("${n.art}")` : "none";
+  $("sleeve").style.backgroundImage = art;
+  $("wash").style.backgroundImage = art;
+  $("title").textContent = n.title;
+  // Longer titles get smaller, so most fit on one or two lines
+  const L = n.title.length;
+  $("title").style.fontSize = (L <= 14 ? 120 : L <= 24 ? 100 : L <= 40 ? 84 : 70) + "px";
+  $("artist").textContent = n.artist || "";
+  $("album").textContent = n.album && n.album !== n.title ? n.album : "";
+  const rooms = n.rooms || [];
+  $("rooms").textContent = rooms.length <= 3 ? rooms.join(", ") : `${rooms.slice(0, 2).join(", ")} and ${rooms.length - 2} more`;
+});
+</script>
+</body>
+</html>
