@@ -13,10 +13,10 @@ reached at `http://<home-assistant>:8800`.
 - Brightness schedule: editable times anchored to sunrise, sunset or a clock time, each with its own
   brightness, light-sensor and warmth setting
 
-Settings (Configuration tab): `tv_ip`, the Frame's address on the network.
+Settings (Configuration tab): `tv_ip`, the Frame's address on the network; optionally `latitude` and
+`longitude` (otherwise Home Assistant's home location is used for sunrise and sunset).
 
-State, cache and logs live in the app's `/data` folder, so they survive updates. On first start,
-Collections, the schedule and the TV address live in the app's own storage and options on your Home Assistant box, not in this repository. The location for sunrise and sunset comes from Home Assistant.
+State, cache and logs live in the app's `/data` folder, so they survive updates. Collections, the schedule and the TV address live in the app's own storage and options on your Home Assistant box, not in this repository. The location for sunrise and sunset comes from Home Assistant.
 
 ## Releasing a change
 Bump `version` in `config.yaml`, push, then click **Update** on the app in Home Assistant.
