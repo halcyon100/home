@@ -16,7 +16,7 @@ from astral.sun import sun as astral_sun
 from engine import (KEEP_OFF, OFF, ON, SHUT, Overrides, Schedule, daylight_zones_from_options,
                     keyframes_from_options, pct_to_255, resolve)
 
-APP_VERSION = "0.6.1"
+APP_VERSION = "0.7.0"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -121,6 +121,9 @@ class Circadian:
         self._saved = None
         self.force_wake = False
         self.catch_up = opts.get("early_wake_catch_up", "12:00")
+        # Morning wakes gated by sunrise time ("only on dark mornings") misjudged grey days and broke when the
+        # clocks fell back (2026-11-01). Off: the wake runs every day, and each light's daylight sensor decides.
+        self.sun_gate = bool(opts.get("wake_sun_gate", True))
         # Lutron dims in visible 1% steps, so some lights only move while nobody's there.
         self.quiet = {}
         for spec in opts.get("quiet_when_occupied", []) or []:
@@ -183,7 +186,9 @@ class Circadian:
             log.info("Boost: %d lights, switch %s (%s)", len(self.boost), self.boost_entity,
                      (self.states.get(self.boost_entity) or {}).get("state", "missing"))
         today = datetime.now(self.tz).date()
-        for t, k in self.schedule.wake_events(today):
+        if not self.sun_gate:
+            log.info("Morning wakes run every day; each light's daylight sensor decides")
+        for t, k in self.schedule.wake_events(today, ignore_gate=not self.sun_gate):
             log.info("Today's wake: %s at %s", k.name, t.strftime("%H:%M"))
 
     def now(self) -> datetime:
@@ -608,12 +613,13 @@ class Circadian:
             return
         now = self.vnow()
         today = now.date()
-        events = self.schedule.wake_events(today)
+        events = self.schedule.wake_events(today, ignore_gate=not self.sun_gate)
         force = self.force_wake
         if force:
+            # You asked: run the morning even if the sun gate skipped it. (Checking only for "no events"
+            # missed this whenever the evening's own wake steps, like the balcony path, were still to come.)
             self.force_wake = False
-            if not events:  # light mornings: the sun gate skipped them, but you asked
-                events = [(t, k) for t, k in self.schedule.wake_events(today, ignore_gate=True)]
+            events = self.schedule.wake_events(today, ignore_gate=True)
         for t, k in events:
             due = t <= now < t + WAKE_WINDOW
             if force and not due and t <= now:
