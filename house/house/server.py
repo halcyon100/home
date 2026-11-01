@@ -23,7 +23,7 @@ from live import Live
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.18.0"
+VERSION = "0.18.1"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -317,7 +317,11 @@ class House:
                           "now": a.get("current_temperature"), "target": a.get("temperature"),
                           "humidity": a.get("current_humidity"), "eco": a.get("preset_mode") == "eco",
                           "fan": a.get("fan_mode")})
-        return {"mode": (by.get(self.climate_mode) or {}).get("state"), "zones": zones}
+        wx = by.get(self.opts.get("forecast", "weather.nws")) or {}
+        cold = (by.get(self.opts.get("climate_too_cold", "binary_sensor.too_cold_for_ac")) or {}).get("state") == "on"
+        return {"mode": (by.get(self.climate_mode) or {}).get("state"), "zones": zones,
+                "outside": (wx.get("attributes") or {}).get("temperature"), "too_cold": cold,
+                "fans": any(z["fan"] == "on" for z in zones)}
 
     async def _json(self, url: str, timeout: float = 4):
         try:
@@ -364,6 +368,9 @@ class House:
             mode = body.get("value")
             if mode not in ("Heat", "Cool", "Off"):
                 raise web.HTTPBadRequest(text="Heat, Cool or Off")
+            cold = (self.live.states.get(self.opts.get("climate_too_cold", "binary_sensor.too_cold_for_ac")) or {}).get("state") == "on"
+            if mode == "Cool" and cold:
+                raise web.HTTPConflict(text="Too cold outside for AC")
             await self.ha_call("input_select", "select_option", {"entity_id": self.climate_mode, "option": mode})
         elif op == "fan" and self.climate:
             minutes = int(body.get("value", 15))

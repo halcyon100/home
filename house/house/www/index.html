@@ -226,6 +226,8 @@ ol.log.big{font-size:var(--s0)}
 .seg button[aria-checked="true"]{background:var(--ink);color:var(--ground)}
 .seg.small button{padding:.35em 1em .4em;font-size:var(--s-1)}
 .seg button.busy{opacity:.5}
+.seg button:disabled{opacity:.32;cursor:not-allowed}
+#clnote b,#fannote b{color:var(--ink);font-weight:520}
 .cl-mode{margin-top:clamp(18px,3vw,32px)}
 .cl-mode p,.fans p{margin:.8em 0 0;max-width:46ch}
 .zones{margin-top:clamp(28px,4vw,48px);border-top:1px solid var(--hair)}
@@ -326,10 +328,10 @@ ol.log.big{font-size:var(--s0)}
 </section>
 <section id="v-climate" role="tabpanel" aria-label="Climate" hidden>
   <div class="cl-mode"><div class="seg" id="clmode" role="radiogroup" aria-label="House mode"></div>
-    <p class="t-quiet">One mode for the whole house, never heat and cool at once. A level that's off stays off.</p></div>
+    <p class="t-quiet" id="clnote">One mode for the whole house, never heat and cool at once. A level that's off stays off.</p></div>
   <div class="zones" id="zones"></div>
   <div class="fans"><h2>Fresh air</h2><div class="seg small" id="fans"><button data-fan="15">15 min</button><button data-fan="30">30 min</button><button data-fan="60">1 hour</button></div>
-    <p class="t-quiet">Runs the fans on every level, in any mode.</p></div>
+    <p class="t-quiet" id="fannote">Runs the fans on every level, in any mode. They also run on their own when the sun pushes a level past 73 and the house isn't cooling.</p></div>
 </section>
 <section id="v-activity" role="tabpanel" aria-label="Activity" hidden>
   <div class="field act-field">
@@ -765,7 +767,14 @@ let pendTimer = {};
 function renderClimate(){
   const c = S && S.climate;
   if (!c){ $("zones").innerHTML = `<p class="err">No thermostats are set up in House's options.</p>`; return; }
-  $("clmode").innerHTML = ["Heat","Cool","Off"].map(m=>`<button role="radio" aria-checked="${c.mode===m}" data-clmode="${m}">${m}</button>`).join("");
+  const out = c.outside!=null ? Math.round(c.outside) : null;
+  $("clmode").innerHTML = ["Heat","Cool","Off"].map(m=>`<button role="radio" aria-checked="${c.mode===m}" data-clmode="${m}"${m==="Cool"&&c.too_cold?" disabled":""}>${m}</button>`).join("");
+  $("clnote").innerHTML = c.too_cold
+    ? `<b>${out}° outside: too cold for AC.</b> Cool comes back above 60°. Until then the fans move the sun's heat around.`
+    : `One mode for the whole house, never heat and cool at once. A level that's off stays off.${out!=null?` ${out}° outside.`:""}`;
+  document.querySelectorAll("#fans button").forEach(b=>b.setAttribute("aria-checked", "false"));
+  $("fans").dataset.on = c.fans ? "1" : "";
+  $("fannote").firstChild && ($("fannote").innerHTML = (c.fans ? "<b>The fans are running.</b> " : "") + "Runs the fans on every level, in any mode. They also run on their own when the sun pushes a level past 73 and the house isn't cooling.");
   $("zones").innerHTML = c.zones.map(z=>{
     const on = z.mode==="heat"||z.mode==="cool", tgt = pend[z.entity] ?? z.target;
     const st = !on ? "Off" : z.action==="heating" ? `<b class="heat">Heating</b> to ${Math.round(tgt)}°` :
@@ -835,6 +844,7 @@ document.addEventListener("click",e=>{
   const c = e.target.closest("[data-c]");
   if (c){ act({entity:c.dataset.c, op:c.dataset.op}, c); return; }
   const cm = e.target.closest("[data-clmode]");
+  if (cm && cm.disabled) return;
   if (cm){ if (S.climate) S.climate.mode = cm.dataset.clmode; renderClimate(); act({op:"climate_mode", value:cm.dataset.clmode}); return; }
   const tt = e.target.closest("[data-t]");
   if (tt){ nudge(tt.dataset.t, +tt.dataset.d); return; }
