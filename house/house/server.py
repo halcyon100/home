@@ -24,7 +24,7 @@ from roads import Roads
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.19.2"
+VERSION = "0.19.3"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -583,6 +583,9 @@ def make_app(house: House) -> web.Application:
         if not shot:
             raise web.HTTPNotFound()
         body, ctype = shot
+        if req.query.get("b64"):           # as text, for tools that can't carry an image
+            import base64
+            return web.json_response({"type": ctype, "data": base64.b64encode(body).decode()})
         return web.Response(body=body, content_type=ctype.split(";")[0], headers={"Cache-Control": "max-age=60"})
 
     async def api_guide_versions(_req):
