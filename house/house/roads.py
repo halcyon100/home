@@ -84,7 +84,9 @@ def nearby_times(rows: list, home: tuple[float, float], radius: float = NEAR_MIL
         now, normal = _f(t.get("CurrentTime")), _f(t.get("NormalTime"))
         out.append({"road": t.get("RoadwayName") or "", "what": t.get("Description") or "",
                     "now": now, "normal": normal, "delay": _f(t.get("Delay")),
-                    "length": _f(t.get("Distance")), "miles": round(min(ds), 1)})
+                    "length": _f(t.get("Distance")), "miles": round(min(ds), 1),
+                    "mid": [sum(a for a, _ in pts if a is not None) / 2, sum(b for _, b in pts if b is not None) / 2]
+                    if all(a is not None and b is not None for a, b in pts) else None})
     out.sort(key=lambda x: (-(x["delay"] or 0), x["miles"]))
     return out
 

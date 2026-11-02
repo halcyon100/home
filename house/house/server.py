@@ -20,11 +20,12 @@ from board import Board, observed
 from guide import Guide
 from live import Live
 from roads import Roads
+import roadboard
 
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.19.3"
+VERSION = "0.20.0"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -578,6 +579,13 @@ def make_app(house: House) -> web.Application:
     async def api_roads(_req):
         return web.json_response(roads.report())
 
+    async def roads_page(_req):
+        return web.FileResponse(WWW / "roads.html", headers={"Cache-Control": "no-cache"})
+
+    async def api_roads_board(_req):
+        by = {s["entity_id"]: s for s in await house.all_states()}
+        return web.json_response(roadboard.build(roads.report(), by, datetime.now(board.tz)))
+
     async def api_roads_cam(req):
         shot = await roads.snapshot(req.match_info["view"])
         if not shot:
@@ -596,6 +604,8 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/", index)
     app.router.add_get("/api/state", api_state)
     app.router.add_get("/api/roads", api_roads)
+    app.router.add_get("/roads", roads_page)
+    app.router.add_get("/api/roads/board", api_roads_board)
     app.router.add_get("/api/roads/cam/{view}", api_roads_cam)
     app.router.add_get("/api/devices", api_devices)
     app.router.add_post("/api/do", api_do)

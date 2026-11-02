@@ -35,3 +35,31 @@ def test_times_worst_delay_first():
     ]
     out = nearby_times(rows, HOME)
     assert [t["road"] for t in out] == ["I-94", "I-41"]
+
+
+def test_closures_say_when_and_group():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    import roadboard as rb
+    now = datetime(2026, 11, 2, 12, 15, tzinfo=ZoneInfo("America/Chicago"))
+    d = ["Roadwork - Ramp Full Closure on I-41 SB at OFF RAMP TO GOOD HOPE RD. Daily from 11/02/2026 to 11/03/2026, 09:00 PM - 06:00 AM, M, T",
+         "Roadwork - Ramp Full Closure on I-41 SB at ON RAMP FROM COUNTY PP. Daily from 11/02/2026 to 11/03/2026, 09:00 PM - 06:00 AM, M, T",
+         "Roadwork - Mainline Left Lane Closed on I-41 SB from ON RAMP FROM COUNTY PP to WIS 100 SB-SILVER SPRING (BRIDGE CROSSING)",
+         "Roadwork - Ramp Full Closure on I-41 NB at ON RAMP FROM COUNTY PP. Daily from 11/09/2026 to 11/10/2026, 09:00 PM - 06:00 AM, M, T"]
+    ev = [{"road": "I-41", "what": x, "ends": 1795672799} for x in d]
+    out = rb.closures(ev, now)
+    assert out[0]["when"] == "Tonight, 9 pm – 6 am"
+    assert out[0]["text"] == "41 south: Good Hope exit and County PP entrance closed"
+    assert out[1]["text"] == "41 south: left lane closed, County PP to Silver Spring"
+    assert len(out) == 2                      # next week's is past the horizon
+
+
+def test_headline_leads_with_the_problem():
+    import roadboard as rb
+    times = [{"what": "I-41/US 45 SB County Q to Zoo Interchange", "now": 24, "normal": 15, "mid": [43.1, -88.1]},
+             {"what": "I-94 EB WIS 16 to Zoo Interchange", "now": 11, "normal": 11}]
+    lg = rb.legs(times)
+    say, worst = rb.headline(lg, [], [])
+    assert worst == "41" and say == "41 south is backed up: 24 min to the Zoo, usually 15."
+    assert rb.headline(rb.legs([]), [], [])[0] == "Clear to downtown and the airport."

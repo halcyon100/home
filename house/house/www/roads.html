@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>Roads</title>
+<style>
+@font-face{font-family:"Archivo";src:url("shared/archivo.woff2") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%}
+/* Drawn at 1080 × 1920 like the Kitchen board, so it can go on the Frame; scaled down on a phone */
+:root{--ink:#F4F1EA;--quiet:rgb(244 241 234 / .66);--hair:rgb(244 241 234 / .24);--ok:#F4F1EA;--slow:#F2B45A;--bad:#E8664A;--ground:#0E151C}
+html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--ground)}
+body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-settings:"tnum" 1,"case" 1;-webkit-font-smoothing:antialiased;transform-origin:0 0}
+
+/* The camera, twice: soft and huge as the ground, and sharp across the top third */
+.fill{position:absolute;inset:-160px;background-size:cover;background-position:center;filter:blur(80px) saturate(1.25) brightness(.5);transform:scale(1.1)}
+.fill::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgb(14 21 28 / .25),rgb(14 21 28 / .72) 55%,rgb(14 21 28 / .86))}
+.hero{position:absolute;left:0;right:0;top:0;height:680px;overflow:hidden}
+.hero img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(1.08) contrast(1.04)}
+/* The frost: blur rising into the bottom of the shot, the same layered treatment as the Kitchen board */
+.hero .frost{position:absolute;left:0;right:0;bottom:0;height:70%}
+.hero .frost i{position:absolute;inset:0}
+.hero .frost i:nth-child(1){backdrop-filter:blur(6px);-webkit-mask-image:linear-gradient(180deg,transparent 0%,#000 30%);mask-image:linear-gradient(180deg,transparent 0%,#000 30%)}
+.hero .frost i:nth-child(2){backdrop-filter:blur(18px);-webkit-mask-image:linear-gradient(180deg,transparent 25%,#000 55%);mask-image:linear-gradient(180deg,transparent 25%,#000 55%)}
+.hero .frost i:nth-child(3){backdrop-filter:blur(40px);-webkit-mask-image:linear-gradient(180deg,transparent 45%,#000 80%);mask-image:linear-gradient(180deg,transparent 45%,#000 80%)}
+.hero .frost i:nth-child(4){background:linear-gradient(180deg,transparent 20%,rgb(14 21 28 / .55) 100%)}
+.hero .top{position:absolute;inset:0 0 auto;height:220px;background:linear-gradient(180deg,rgb(14 21 28 / .55),transparent)}
+.cap{position:absolute;left:88px;bottom:34px;font-size:26px;font-stretch:84%;color:var(--quiet);letter-spacing:.01em}
+.cap b{color:var(--ink);font-weight:560}
+.cap .live{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--bad);margin-right:12px;vertical-align:1px;animation:live 2s ease-in-out infinite}
+@keyframes live{50%{opacity:.35}}
+
+.page{position:absolute;inset:0;padding:96px 88px 80px;display:flex;flex-direction:column}
+.mast{display:flex;justify-content:space-between;align-items:baseline;font-size:34px;font-stretch:88%;text-shadow:0 1px 12px rgb(0 0 0 / .35)}
+.mast b{font-weight:560}.mast span{color:var(--quiet)}
+.say{margin:532px 0 0;font-size:64px;line-height:1.04;font-weight:290;font-stretch:96%;letter-spacing:-.028em;max-width:17ch}
+.say em{font-style:normal;color:var(--slow)}
+
+h2{margin:0 0 16px;font-size:26px;font-weight:560;font-stretch:84%;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet)}
+.trips{margin-top:46px;display:grid;grid-template-columns:repeat(3,1fr);border-top:1.5px solid var(--hair)}
+.trip{padding-top:22px;min-width:0}
+.trip + .trip{padding-left:34px;border-left:1.5px solid var(--hair)}
+.trip h3{margin:0;font-size:32px;font-weight:560;font-stretch:90%}
+.trip .t{margin-top:8px;font-size:88px;font-weight:250;letter-spacing:-.04em;line-height:1}
+.trip .t small{font-size:32px;letter-spacing:0;margin-left:.2em;color:var(--quiet);font-weight:400}
+.trip p{margin:8px 0 0;font-size:26px;font-stretch:86%;color:var(--quiet);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.map{margin-top:44px}
+svg{display:block;overflow:visible}
+svg text{font-family:"Archivo";fill:var(--ink)}
+.lbl{font-size:30px;font-weight:560;font-stretch:90%}
+.sub{font-size:24px;font-stretch:82%;fill:var(--quiet)}
+.min{font-size:28px;font-weight:520;font-stretch:88%}
+.min tspan{fill:var(--quiet);font-weight:400}
+.leg{stroke:var(--ok);stroke-width:14;stroke-linecap:round;fill:none}
+.leg.slow{stroke:var(--slow)}.leg.bad{stroke:var(--bad)}
+.dots{stroke:var(--quiet);stroke-width:10;stroke-dasharray:2 16;stroke-linecap:round}
+.min.slow{fill:var(--slow)}.min.bad{fill:var(--bad)}
+
+.notes{list-style:none;margin:30px 0 0;padding:0;display:grid;gap:16px;font-size:30px;line-height:1.25;font-stretch:92%}
+.notes li{display:grid;grid-template-columns:30px 1fr;gap:16px;align-items:baseline}
+.notes li::before{content:"";width:14px;height:14px;background:var(--slow);transform:translateY(-4px) rotate(45deg)}
+.notes li.now::before{background:var(--bad)}
+.notes b{font-weight:560}.notes span{color:var(--quiet)}
+.key{margin-top:auto;padding-top:24px;border-top:1.5px solid var(--hair);display:flex;flex-wrap:wrap;gap:10px 34px;font-size:24px;font-stretch:82%;color:var(--quiet)}
+.key i{display:inline-block;width:40px;height:0;vertical-align:.32em;margin-right:12px}
+.err{color:var(--quiet);font-size:30px;margin-top:40px}
+</style>
+</head>
+<body>
+<div class="fill" id="fill"></div>
+<div class="hero" id="hero"><img id="cam" alt=""><div class="top"></div><div class="frost"><i></i><i></i><i></i><i></i></div><div class="cap" id="cap"></div></div>
+<div class="page">
+  <div class="mast"><span><b>Roads</b> around us</span><span id="asof"></span></div>
+  <p class="say" id="say"></p>
+  <div class="trips" id="trips"></div>
+  <div class="map">
+    <h2>Our routes, now</h2>
+    <svg width="904" height="560" viewBox="0 0 904 900" preserveAspectRatio="xMinYMin meet" id="map">
+      <line class="dots" x1="70" y1="70" x2="390" y2="70"/>
+      <line class="dots" x1="70" y1="70" x2="70" y2="590"/>
+      <line class="leg" id="l41" x1="390" y1="70" x2="390" y2="590"/>
+      <line class="leg" id="l94w" x1="70" y1="590" x2="390" y2="590"/>
+      <line class="leg" id="l94e" x1="390" y1="590" x2="840" y2="590"/>
+      <path class="leg" id="l894" d="M390 590 V830 H840"/>
+      <g fill="#0E151C" stroke="var(--ink)" stroke-width="5">
+        <circle cx="230" cy="70" r="20" fill="var(--ink)"/>
+        <circle cx="390" cy="70" r="13"/><circle cx="70" cy="70" r="13"/>
+        <circle cx="390" cy="590" r="20"/><circle cx="70" cy="590" r="13"/>
+        <circle cx="840" cy="590" r="20" fill="var(--ink)"/><circle cx="840" cy="830" r="20" fill="var(--ink)"/>
+      </g>
+      <text class="lbl" x="230" y="30" text-anchor="middle">Home</text>
+      <text class="sub" x="230" y="122" text-anchor="middle">County Q</text>
+      <text class="sub" x="40" y="30">164</text><text class="sub" x="404" y="30">41</text>
+      <text class="sub" x="100" y="330">164 · closures only</text>
+      <text class="min" id="t41" x="430" y="330"></text>
+      <text class="min" id="t94w" x="110" y="560"></text>
+      <text class="lbl" x="430" y="640">Zoo</text>
+      <text class="lbl" x="840" y="545" text-anchor="end">Downtown</text>
+      <text class="min" id="t94e" x="600" y="640" text-anchor="middle"></text>
+      <text class="lbl" x="840" y="785" text-anchor="end">Airport</text>
+      <text class="min" id="t894" x="600" y="880" text-anchor="middle"></text>
+    </svg>
+  </div>
+  <ul class="notes" id="notes"></ul>
+  <div class="key">
+    <span><i style="border-top:6px solid var(--ok)"></i>Usual</span>
+    <span><i style="border-top:6px solid var(--slow)"></i>Slower</span>
+    <span><i style="border-top:6px solid var(--bad)"></i>Slow</span>
+    <span><i style="border-top:6px dotted var(--quiet)"></i>No speeds, closures only</span>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// On a phone, shrink the 1080-wide page to fit
+function fit(){ const k = Math.min(1, innerWidth / 1080); document.body.style.transform = k < 1 ? `scale(${k})` : ""; document.documentElement.style.height = (1920*k)+"px"; }
+addEventListener("resize", fit); fit();
+
+function legText(k, l){
+  if (l.now == null) return k === "94e" ? "94 east" : k === "894" ? "894" : "";
+  const d = l.now - l.normal;
+  const lead = k === "41" ? `${l.now} min ` : k === "94w" ? `${l.now} min ` : `${k==="94e"?"94 east":"894"} · ${l.now} min `;
+  const tail = l.status === "ok" ? (k === "41" ? "to the Zoo · usual" : "usual") : `usually ${l.normal}`;
+  return `${lead}<tspan>${tail}</tspan>`;
+}
+function render(B){
+  $("asof").textContent = "511 Wisconsin · Waze · " + B.asof.replace(" "," ");
+  $("say").innerHTML = esc(B.say).replace(/(is (slow|backed up)[^.]*\.|right now\.)/, "<em>$1</em>");
+  $("trips").innerHTML = B.trips.map(t => `<div class="trip"><h3>${esc(t.name)}</h3><div class="t">${t.min ?? "–"}<small>min</small></div><p>${esc(t.route || "")}</p></div>`).join("");
+  for (const [k, l] of Object.entries(B.legs)){
+    const line = $("l"+k), tx = $("t"+k);
+    if (line) line.setAttribute("class", "leg " + (l.status === "unknown" ? "" : l.status));
+    if (tx){ tx.innerHTML = legText(k, l); tx.setAttribute("class", "min " + (l.status === "slow" || l.status === "bad" ? l.status : "")); }
+  }
+  $("notes").innerHTML = B.closures.map(c => `<li class="${c.now?"now":""}"><div><b>${esc(c.when)}</b> <span>${esc(c.text)}</span></div></li>`).join("");
+  if (B.camera){
+    const src = `api/roads/cam/${encodeURIComponent(B.camera.view)}?t=${Date.now()}`;
+    $("cam").src = src; $("fill").style.backgroundImage = `url("${src}")`;
+    $("cap").innerHTML = `<span class="live"></span><b>${esc(B.camera.where)}</b> · live`;
+  }
+}
+function load(){ fetch("api/roads/board", {cache:"no-store"}).then(r => r.json()).then(render)
+  .catch(() => { $("say").innerHTML = `<span class="err">The roads didn't answer.</span>`; }); }
+load(); setInterval(load, 120000);
+</script>
+</body>
+</html>
