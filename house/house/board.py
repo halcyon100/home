@@ -340,7 +340,7 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
                 note = "<b>Rain on and off</b> all day"
             else:
                 note = f"Rain from {clock(first['dt']).lower()}"
-            if peak["dt"].hour >= 12 and not note.startswith("<b>Wet"):
+            if peak["dt"].hour >= 12 and not note.startswith("<b>Wet") and peak["dt"] != first["dt"]:
                 note += f", <b>likeliest {'after' if peak['dt'] > first['dt'] else 'around'} {clock(peak['dt'])}</b>"
             note += f" ({round(pmax)}%)"
         else:
