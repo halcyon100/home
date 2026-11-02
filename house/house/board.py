@@ -470,7 +470,14 @@ def _hhmm(v: str, fallback: str) -> tuple[int, int]:
 
 
 class Board:
-    """Runs the Frame's one board slot: the morning weather board on arrival, and the kitchen's record whenever one plays."""
+    """Runs the Frame's one board slot. Three boards can want it:
+      weather  mornings, when someone's in the kitchen
+      roads    any time someone's in the kitchen (when 511 is set up)
+      music    whenever the kitchen plays a record
+    The ones wanted take turns (`alternate` seconds each, in that order). News jumps the queue: a new
+    track, or a new problem on the roads. Nobody in the kitchen and no record: the art comes back."""
+
+    ORDER = ("weather", "roads", "music")
 
     def __init__(self, house, opts: dict):
         self.house = house
@@ -508,6 +515,11 @@ class Board:
         self.turn: str | None = None       # what's on screen, and since when
         self.turn_at = 0.0
         self.shown_track = ""              # the last track that made it onto the screen
+        self.roads = None                  # Roads (511), set by the server when it's configured
+        self.roads_from = _hhmm(opts.get("roads_from"), "05:00")
+        self.roads_until = _hhmm(opts.get("roads_until"), "21:00")   # after 9 pm nobody's heading out
+        self.road_news = ""                # the roads' problem, as last staged / shown
+        self.shown_road_news = ""
 
     # ------------------------------------------------------------ data
     async def forecasts(self, entity: str, kind: str) -> list:
@@ -628,12 +640,20 @@ class Board:
             self.shown_track = self.track(self.np)
         elif not self.shown_track:
             self.shown_track = self.track(self.music)   # already playing when the board went up: not new
+        if kind == "roads":
+            self.shown_road_news = self.road_news
 
     async def stage(self, kind: str = "weather") -> dict:
         """Put a fresh picture of `kind` in the Frame's one board slot (on screen at once if the slot is showing)."""
         if kind == "music":
             self.np = self.music
             looks, page, label = self.track(self.np), "nowplaying", "Now playing"
+        elif kind == "roads":
+            rb = self.roads_board()
+            if rb is None:
+                return {"ok": False, "reason": "no road data yet"}
+            looks, page, label = self.roads_looks(rb), "roads", "Roads"
+            self.road_news = self.roads_problem(rb)
         else:
             looks, page, label = self.looks(await self.data()), "board", "Kitchen board"
             self.checked = self.house.live.version
@@ -664,23 +684,59 @@ class Board:
         m = now.hour * 60 + now.minute
         return self.start[0] * 60 + self.start[1] <= m < self.end[0] * 60 + self.end[1]
 
+    def roads_hours(self, now: datetime) -> bool:
+        m = now.hour * 60 + now.minute
+        return self.roads_from[0] * 60 + self.roads_from[1] <= m < self.roads_until[0] * 60 + self.roads_until[1]
+
     async def present(self) -> bool:
         if self.house.live.ready:
             return (self.house.live.states.get(self.sensor) or {}).get("state") == "on"
         st = await self.house.ha_get(f"/states/{self.sensor}")
         return st.get("state") == "on"
 
-    def choose(self, want_weather: bool, want_music: bool, t: float) -> str | None:
-        """What the Frame's board slot should show now. Both wanted: they take turns."""
-        if want_weather and want_music:
-            if not self.showing or self.turn not in ("weather", "music"):
-                return "weather"
-            if self.turn == "weather" and self.track(self.music) != self.shown_track:
-                return "music"          # a new track jumps the queue; the weather gets its turn after
-            if t - self.turn_at >= self.alternate:
-                return "music" if self.turn == "weather" else "weather"
-            return self.turn
-        return "music" if want_music else "weather" if want_weather else None
+    def choose(self, wanted: list[str], t: float, news: str | None = None) -> str | None:
+        """What the Frame's board slot shows now, from the boards that want it (in ORDER).
+        One wanted: that one. Several: they take turns; `news` (a board with something new) goes next."""
+        wanted = [k for k in self.ORDER if k in wanted]
+        if not wanted:
+            return None
+        if not self.showing or self.turn not in wanted:
+            return wanted[0]
+        if news in wanted and news != self.turn:
+            return news
+        if len(wanted) > 1 and t - self.turn_at >= self.alternate:
+            return wanted[(wanted.index(self.turn) + 1) % len(wanted)]
+        return self.turn
+
+    def news(self, wanted: list[str]) -> str | None:
+        """Which board has something new to say: a new track, or a new problem on the roads."""
+        if "music" in wanted and self.turn != "music" and self.track(self.music) != self.shown_track:
+            return "music"
+        if "roads" in wanted and self.turn != "roads" and self.road_news and self.road_news != self.shown_road_news:
+            return "roads"
+        return None
+
+    def roads_board(self) -> dict | None:
+        if not self.roads or not self.roads.configured or not self.roads.updated:
+            return None
+        import roadboard
+        by = self.house.live.states if self.house.live.ready else {}
+        return roadboard.build(self.roads.report(), by, datetime.now(self.tz))
+
+    @staticmethod
+    def roads_looks(b: dict) -> str:
+        """What the roads board says, coarsely (status of each leg, closures, headline), so it's redrawn
+        when the story changes, not every time a minute ticks."""
+        return json.dumps({"say": b["say"], "legs": {k: v["status"] for k, v in b["legs"].items()},
+                           "closures": [c["text"] + c["when"] for c in b["closures"]],
+                           "trips": [round((x["min"] or 0) / 5) for x in b["trips"]],
+                           "camera": (b.get("camera") or {}).get("view")}, sort_keys=True)
+
+    @staticmethod
+    def roads_problem(b: dict | None) -> str:
+        if not b:
+            return ""
+        return "|".join(k for k, v in sorted(b["legs"].items()) if v["status"] in ("slow", "bad"))
 
     async def tick(self):
         t = time.time()
@@ -689,23 +745,32 @@ class Board:
             self.last_seen = t
         window = self.in_window(datetime.now(self.tz)) or trying
         grace = 5 if self.try_until else self.linger
-        want_weather = window and self.last_seen > 0 and t - self.last_seen <= grace
+        here = self.last_seen > 0 and t - self.last_seen <= grace
         m = await self.music_now()
         if m:
             self.music, self.music_seen = m, t
         want_music = self.music is not None and t - self.music_seen <= self.music_grace
         if not want_music:
             self.music = None
-        target = self.choose(want_weather, want_music, t)
+        rb = self.roads_board() if not trying and self.roads_hours(datetime.now(self.tz)) else None
+        wanted = ([("weather")] if window and here else []) + (["roads"] if rb and here else []) + \
+                 (["music"] if want_music else [])
+        if rb and self.turn != "roads":
+            self.road_news = self.roads_problem(rb)           # a problem that appears while away is news
+        target = self.choose(wanted, t, self.news(wanted))
 
-        # Keep the right picture staged: what's wanted now, or (mornings) the weather, ready for arrival
-        prep = target or ("weather" if window else None)
+        # Keep the right picture staged: what's wanted now, or what arrival would show first, ready for it
+        prep = target or ("weather" if window else "roads" if rb else None)
         age = t - self.staged_at
         if prep and not self.staging:
             if self.staged_kind != prep or not self.has_picture:
                 self.staging = asyncio.create_task(self._stage_bg(prep))
             elif prep == "music" and self.staged_looks != self.track(self.music):
                 self.staging = asyncio.create_task(self._stage_bg("music"))      # the next track
+            elif prep == "roads":
+                if age > self.every or (age > (self.gap_showing if self.showing else self.every)
+                                        and self.roads_looks(rb) != self.staged_looks):
+                    self.staging = asyncio.create_task(self._stage_bg("roads"))
             elif prep == "weather":
                 if age > self.every:
                     self.staging = asyncio.create_task(self._stage_bg("weather"))
@@ -721,7 +786,7 @@ class Board:
             self.showing = bool(r.get("ok"))
             if self.showing:
                 self.on_screen(target)
-            log.info("Frame: %s %s", "now playing" if target == "music" else "kitchen board",
+            log.info("Frame: %s %s", {"music": "now playing", "roads": "roads"}.get(target, "kitchen board"),
                      "on" if self.showing else f"not shown ({r.get('reason')})")
         if self.showing and target is None:
             await self.frame_post("/api/board/hide")
@@ -729,7 +794,7 @@ class Board:
             self.staged_kind, self.staged_at, self.has_picture = None, 0.0, False   # the Frame took it off the TV
             self.try_until = 0.0
             log.info("Frame: nothing to show; art's back")
-        if not window and target is None and not self.showing and self.has_picture and not self.staging:
+        if prep is None and not self.showing and self.has_picture and not self.staging:
             await self.frame_post("/api/board/hide")   # take the staged picture off the TV for the day
             self.staged_kind, self.staged_at, self.has_picture = None, 0.0, False
 

@@ -134,23 +134,23 @@ def _board():
 
 def test_music_alone_shows_music_weather_alone_shows_weather():
     b = _board()
-    assert b.choose(False, True, 1000) == "music"
-    assert b.choose(True, False, 1000) == "weather"
-    assert b.choose(False, False, 1000) is None
+    assert b.choose(["music"], 1000, b.news(["music"])) == "music"
+    assert b.choose(["weather"], 1000, b.news(["weather"])) == "weather"
+    assert b.choose([], 1000, b.news([])) is None
 
 
 def test_morning_with_music_takes_turns_starting_with_weather():
     b = _board()
-    assert b.choose(True, True, 1000) == "weather"          # nothing up yet: the morning board first
+    assert b.choose(["weather", "music"], 1000, b.news(["weather", "music"])) == "weather"          # nothing up yet: the morning board first
     b.showing = True
     b.on_screen("weather")
     b.turn_at = 1000
-    assert b.choose(True, True, 1100) == "weather"          # its turn isn't over
-    assert b.choose(True, True, 1180) == "music"            # three minutes: the record's turn
+    assert b.choose(["weather", "music"], 1100, b.news(["weather", "music"])) == "weather"          # its turn isn't over
+    assert b.choose(["weather", "music"], 1180, b.news(["weather", "music"])) == "music"            # three minutes: the record's turn
     b.on_screen("music")
     b.turn_at = 1180
-    assert b.choose(True, True, 1300) == "music"
-    assert b.choose(True, True, 1360) == "weather"
+    assert b.choose(["weather", "music"], 1300, b.news(["weather", "music"])) == "music"
+    assert b.choose(["weather", "music"], 1360, b.news(["weather", "music"])) == "weather"
 
 
 def test_track_key_changes_with_the_song():
@@ -169,17 +169,42 @@ def test_a_new_track_jumps_the_queue_in_the_morning():
     b.turn_at = 1000
     b.on_screen("weather")
     b.turn_at = 1180
-    assert b.choose(True, True, 1200) == "weather"           # same song: the weather keeps its turn
+    assert b.choose(["weather", "music"], 1200, b.news(["weather", "music"])) == "weather"           # same song: the weather keeps its turn
     b.music = {**b.music, "title": "Break Apart"}
-    assert b.choose(True, True, 1200) == "music"             # new song: show it now
+    assert b.choose(["weather", "music"], 1200, b.news(["weather", "music"])) == "music"             # new song: show it now
 
 
 def test_music_already_playing_on_arrival_lets_the_weather_go_first():
     b = _board()
     b.music = {"title": "Kerala", "artist": "Bonobo", "album": "Migration", "art": "/a"}
-    assert b.choose(True, True, 1000) == "weather"
+    assert b.choose(["weather", "music"], 1000, b.news(["weather", "music"])) == "weather"
     b.showing = True
     b.on_screen("weather")
     b.turn_at = 1000
-    assert b.choose(True, True, 1010) == "weather"           # not bumped by a song that was already on
-    assert b.choose(True, True, 1180) == "music"
+    assert b.choose(["weather", "music"], 1010, b.news(["weather", "music"])) == "weather"           # not bumped by a song that was already on
+    assert b.choose(["weather", "music"], 1180, b.news(["weather", "music"])) == "music"
+
+
+def test_roads_join_the_rotation_and_a_new_problem_jumps():
+    b = _board()
+    want = ["weather", "roads", "music"]
+    assert b.choose(want, 1000, b.news(want)) == "weather"
+    b.showing = True
+    b.on_screen("weather"); b.turn_at = 1000
+    b.music = {"title": "Kerala"}; b.shown_track = b.track(b.music)
+    assert b.choose(want, 1180, b.news(want)) == "roads"           # turns go in order
+    b.on_screen("roads"); b.turn_at = 1180
+    assert b.choose(want, 1360, b.news(want)) == "music"
+    b.on_screen("music"); b.turn_at = 1360
+    b.road_news = "41"                                               # 41 just went slow
+    assert b.choose(want, 1400, b.news(want)) == "roads"
+    b.on_screen("roads")
+    assert b.news(want) is None                                      # shown: no longer news
+
+
+def test_roads_stop_at_nine():
+    from datetime import datetime
+    b = _board()
+    assert b.roads_hours(datetime(2026, 11, 2, 20, 59))
+    assert not b.roads_hours(datetime(2026, 11, 2, 21, 0))
+    assert not b.roads_hours(datetime(2026, 11, 2, 4, 30))

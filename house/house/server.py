@@ -25,7 +25,7 @@ import roadboard
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.20.3"
+VERSION = "0.21.0"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -433,6 +433,7 @@ def make_app(house: House) -> web.Application:
     board = Board(house, house.opts)
     guide = Guide()
     roads = Roads(house, house.opts.get("wi511_key"))
+    board.roads = roads
 
     async def on_start(_app):
         house.session = aiohttp.ClientSession()
