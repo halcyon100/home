@@ -30,9 +30,9 @@ SKY_OF = {"sunny": "clear", "clear-night": "clear", "partlycloudy": "partly", "c
           "rainy": "rain", "pouring": "rain", "lightning": "storm", "lightning-rainy": "storm", "hail": "storm",
           "snowy": "snow", "snowy-rainy": "snow", "fog": "fog", "windy": "partly", "windy-variant": "overcast",
           "exceptional": "overcast"}
-WORD = {"sunny": "Clear and bright", "clear-night": "Clear", "partlycloudy": "Sun and cloud", "cloudy": "Grey",
+WORD = {"sunny": "Clear and bright", "clear-night": "Clear", "partlycloudy": "Sun and cloud", "cloudy": "Gray",
         "rainy": "Wet", "pouring": "Pouring", "lightning": "Stormy", "lightning-rainy": "Stormy", "hail": "Hail",
-        "snowy": "Snowy", "snowy-rainy": "Sleet", "fog": "Foggy", "windy": "Windy", "windy-variant": "Grey and windy",
+        "snowy": "Snowy", "snowy-rainy": "Sleet", "fog": "Foggy", "windy": "Windy", "windy-variant": "Gray and windy",
         "exceptional": "Unsettled"}
 DAY_WORD = {"sunny": "Sunny", "partlycloudy": "Partly sunny", "cloudy": "Cloudy", "fog": "Foggy",
             "windy": "Windy", "windy-variant": "Cloudy and windy", "snowy": "Snow", "snowy-rainy": "Sleet"}
@@ -44,11 +44,11 @@ WET = 35        # a chance of rain worth mentioning, in percent (NWS calls an ho
 
 
 def clock(dt: datetime, exact: bool = False) -> str:
-    """7 am, 12:30 pm, Noon, Midnight"""
+    """7 am, 12:30 pm, noon, midnight (lowercase: they sit mid-sentence; labels capitalize)"""
     if dt.hour == 12 and dt.minute == 0:
-        return "Noon"
+        return "noon"
     if dt.hour == 0 and dt.minute == 0:
-        return "Midnight"
+        return "midnight"
     h = dt.hour % 12 or 12
     ap = "am" if dt.hour < 12 else "pm"
     return f"{h}:{dt.minute:02d} {ap}" if exact and dt.minute else f"{h} {ap}"
@@ -265,8 +265,10 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
     if temp is None and today:
         temp = today[0].get("temperature")
     temps_today = [h["temperature"] for h in today if h.get("temperature") is not None] + ([temp] if temp is not None else [])
+    # The low from now through tomorrow morning, counting what it is right now: on a night that
+    # warms (a front coming through), the low is now, not some hour of the forecast above it
     tonight = [h["temperature"] for h in hrs if now <= h["dt"] <= midnight + timedelta(hours=9)
-               and h.get("temperature") is not None]
+               and h.get("temperature") is not None] + ([temp] if temp is not None else [])
     high = round(max(temps_today)) if temps_today else None
     low = round(min(tonight)) if tonight else None
 
@@ -362,9 +364,9 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
         notes.append({"what": f"{word} tomorrow", "when": f"{tomorrow_hi}°{' and dry' if dry else ''}"})
 
     # One sentence
-    base = WORD.get(cond, "Grey")
+    base = WORD.get(cond, "Gray")
     if cond in ("rainy", "cloudy", "fog") and (attrs.get("humidity") or 0) >= 85:
-        base = "Grey and damp"
+        base = "Gray and damp"
     if light == "night":
         base = NIGHT_WORD.get(cond, "Overcast") + " tonight"
     if light == "night" and not rain:
@@ -380,11 +382,13 @@ def build(now: datetime, tz: ZoneInfo, current: dict, hourly: list, daily: list,
         say = f"{base}, up to {high}°." if "damp" in base else f"{base}, dry all day, up to {high}°."
     else:
         say = f"{base}."
+    say = say.replace(" am", "\u00a0am").replace(" pm", "\u00a0pm")   # "6 pm" never breaks across lines
 
     # Today, hour by hour, from now to midnight
     chart = [{"h": "Now" if i == 0 else clock(h["dt"]).replace(" am", "").replace(" pm", "")
-              if h["dt"].hour not in (0, 12, 6, 18) else clock(h["dt"]),
-              "t": round(h["temperature"]), "p": round(h.get("precipitation_probability") or 0),
+              if h["dt"].hour not in (0, 12, 6, 18) else clock(h["dt"]).capitalize(),
+              # Now is what the station measured, the same number as the big one
+              "t": round(temp if i == 0 and temp is not None else h["temperature"]), "p": round(h.get("precipitation_probability") or 0),
               "at": h["dt"].isoformat()}
              for i, h in enumerate(today) if h.get("temperature") is not None]
 
@@ -434,19 +438,22 @@ def inside_block(inside: float | None, damp: float | None, day: dict | None, lig
             "notes": notes}
 
 
-def house_line(inside: float | None, day: dict | None, pollen: dict | None, damp: float | None = None) -> list[str]:
+def house_line(inside: float | None, day: dict | None, pollen: dict | None, damp: float | None = None,
+               lights_on: int | None = None) -> list[str]:
     out = []
     if inside is not None:
         out.append(f"<b>{round(inside)}°</b>" + (f" · <b>{round(damp)}%</b>" if damp is not None else "") + " inside")
     if day:
-        lights = [x for x in (day.get("lights") or {}).values() if x.get("state") == "on"]
+        # The house's own count (one per control, like every other screen), not Circadian's bulbs
+        n = lights_on if lights_on is not None else len(
+            [x for x in (day.get("lights") or {}).values() if x.get("state") == "on"])
         if not day.get("enabled", True):
             out.append("Natural light paused")
         elif (day.get("boost") or {}).get("on"):
             out.append("Bright House on")
         else:
             out.append("Natural light on")
-        out.append(f"<b>{len(lights)}</b> light{'s' if len(lights) != 1 else ''} on")
+        out.append(f"<b>{n}</b> light{'s' if n != 1 else ''} on")
     if pollen and pollen.get("rating"):
         top = ", ".join(pollen.get("top") or [])[:40]
         out.append(f"Pollen <b>{html.escape(str(pollen['rating']).lower())}</b>" + (f" · {html.escape(top.lower())}" if top else ""))
@@ -545,8 +552,9 @@ class Board:
             sunrise = datetime.fromisoformat(sun["next_rising"])
         place = cfg.get("location_name") or ""
         place = h.opts.get("board_place") or ("" if place in ("", "Home") else place)   # set in the app's options
+        on = h.lights_on(by)["on"]
         b = build(datetime.now(self.tz), self.tz, current, hourly, daily, sunrise, pollen,
-                  house_line(inside, day, pollen, damp), place, sunset)
+                  house_line(inside, day, pollen, damp, on), place, sunset)
         # The day, together: outside temperature, the sun's height and the house's light on one clock
         lat, lon = cfg.get("latitude"), cfg.get("longitude")
         for p in b["hours"]:
@@ -557,7 +565,7 @@ class Board:
             hl = house_light(day, at)
             if hl:
                 p["light"], p["k"] = hl
-        b["inside"] = inside_block(inside, damp, day, h.lights_on(by)["on"])
+        b["inside"] = inside_block(inside, damp, day, on)
         b["pollen"] = pollen
         return b
 

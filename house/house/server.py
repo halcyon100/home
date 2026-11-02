@@ -19,11 +19,12 @@ from aiohttp import web
 from board import Board, observed
 from guide import Guide
 from live import Live
+from roads import Roads
 
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.18.7"
+VERSION = "0.19.0"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -430,10 +431,12 @@ def make_app(house: House) -> web.Application:
     app = web.Application()
     board = Board(house, house.opts)
     guide = Guide()
+    roads = Roads(house, house.opts.get("wi511_key"))
 
     async def on_start(_app):
         house.session = aiohttp.ClientSession()
         app["live"] = asyncio.create_task(house.live.run(house.session))
+        roads.start()
         app["board_loop"] = asyncio.create_task(board.loop())
 
     async def on_stop(_app):
@@ -572,6 +575,9 @@ def make_app(house: House) -> web.Application:
         # The foot of Home: which release is running, and when the guide last changed.
         return web.json_response({"version": VERSION, "updated": int(guide.updated() or 0)})
 
+    async def api_roads(_req):
+        return web.json_response(roads.report())
+
     async def api_guide_versions(_req):
         return web.json_response({"versions": guide.versions()})
 
@@ -579,6 +585,7 @@ def make_app(house: House) -> web.Application:
     app.on_cleanup.append(on_stop)
     app.router.add_get("/", index)
     app.router.add_get("/api/state", api_state)
+    app.router.add_get("/api/roads", api_roads)
     app.router.add_get("/api/devices", api_devices)
     app.router.add_post("/api/do", api_do)
     app.router.add_static("/shared", WWW / "shared")

@@ -43,8 +43,8 @@ def saturday():
 
 
 def test_clock_words():
-    assert clock(datetime(2026, 1, 1, 12, tzinfo=TZ)) == "Noon"
-    assert clock(datetime(2026, 1, 1, 0, tzinfo=TZ)) == "Midnight"
+    assert clock(datetime(2026, 1, 1, 12, tzinfo=TZ)) == "noon"
+    assert clock(datetime(2026, 1, 1, 0, tzinfo=TZ)) == "midnight"
     assert clock(datetime(2026, 1, 1, 7, 10, tzinfo=TZ), exact=True) == "7:10 am"
     assert clock(datetime(2026, 1, 1, 17, tzinfo=TZ)) == "5 pm"
 
@@ -63,7 +63,7 @@ def test_a_wet_saturday_says_when():
     assert b["notes"][0]["when"].startswith("until 7 pm")
     assert "Clocks fall back tonight" in whats
     assert "Milder tomorrow" in whats
-    assert b["say"] == "Grey and damp, with showers on and off until 7."
+    assert b["say"] == "Gray and damp, with showers on and off until 7."
     assert b["sky"] == "rain" and b["image"] == "sky/rain-morning.jpg"    # no dawn picture yet: morning stands in
     assert (b["high"], b["low"]) == (56, 48)
     assert [d["name"] for d in b["days"]] == ["Sunday", "Monday", "Tuesday"]
