@@ -121,7 +121,7 @@ def what(desc: str) -> tuple[str, str] | None:
     return None
 
 
-def closures(events: list, now: datetime, horizon_days: int = 4, limit: int = 4) -> list[dict]:
+def closures(events: list, now: datetime, horizon_days: int = 4, limit: int = 3) -> list[dict]:
     """Closures on our routes, the next time each happens, grouped when they share a window."""
     groups: dict = {}
     for e in events:
@@ -237,6 +237,15 @@ def pick_camera(cameras: list, lg: dict, worst_key: str | None) -> dict | None:
     return next((c for c in cameras if live(c)), None)
 
 
+def short_route(r: str | None) -> str | None:
+    """Waze's 'County Line Rd Lisbon Twp (Waukesha); Appleton Ave Menomonee Falls' is 'Appleton Ave'."""
+    if not r:
+        return None
+    last = r.split(";")[-1].strip()
+    m = re.match(r"(.*?\b(?:Rd|Ave|St|Dr|Blvd|Pkwy|Way|Hwy|[NSEW]))\b", last)
+    return (m.group(1) if m else last).strip()
+
+
 def build(report: dict, states: dict, now: datetime) -> dict:
     times, events, cameras = report.get("times") or [], report.get("events") or [], report.get("cameras") or []
     lg = legs(times)
@@ -248,7 +257,7 @@ def build(report: dict, states: dict, now: datetime) -> dict:
             m = round(float(st.get("state")))
         except (TypeError, ValueError):
             m = None
-        trips.append({"name": name, "min": m, "route": (st.get("attributes") or {}).get("route")})
+        trips.append({"name": name, "min": m, "route": short_route((st.get("attributes") or {}).get("route"))})
     say, worst = headline(lg, cl, trips)
     cam = pick_camera(cameras, lg, worst)
     view = cam and next((v for v in cam["views"] if (v.get("status") or "").lower() == "enabled"), None)

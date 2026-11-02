@@ -14,7 +14,7 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 /* The camera, twice: soft and huge as the ground, and sharp across the top third */
 .fill{position:absolute;inset:-160px;background-size:cover;background-position:center;filter:blur(80px) saturate(1.25) brightness(.5);transform:scale(1.1)}
 .fill::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgb(14 21 28 / .25),rgb(14 21 28 / .72) 55%,rgb(14 21 28 / .86))}
-.hero{position:absolute;left:0;right:0;top:0;height:680px;overflow:hidden}
+.hero{position:absolute;left:0;right:0;top:0;height:640px;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,#000 62%,transparent);mask-image:linear-gradient(180deg,#000 62%,transparent)}
 .hero img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(1.08) contrast(1.04)}
 /* The frost: blur rising into the bottom of the shot, the same layered treatment as the Kitchen board */
 .hero .frost{position:absolute;left:0;right:0;bottom:0;height:70%}
@@ -24,15 +24,15 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 .hero .frost i:nth-child(3){backdrop-filter:blur(40px);-webkit-mask-image:linear-gradient(180deg,transparent 45%,#000 80%);mask-image:linear-gradient(180deg,transparent 45%,#000 80%)}
 .hero .frost i:nth-child(4){background:linear-gradient(180deg,transparent 20%,rgb(14 21 28 / .55) 100%)}
 .hero .top{position:absolute;inset:0 0 auto;height:220px;background:linear-gradient(180deg,rgb(14 21 28 / .55),transparent)}
-.cap{position:absolute;left:88px;bottom:34px;font-size:26px;font-stretch:84%;color:var(--quiet);letter-spacing:.01em}
+.cap{position:absolute;left:88px;bottom:150px;font-size:26px;font-stretch:84%;color:var(--quiet);letter-spacing:.01em}
 .cap b{color:var(--ink);font-weight:560}
 .cap .live{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--bad);margin-right:12px;vertical-align:1px;animation:live 2s ease-in-out infinite}
 @keyframes live{50%{opacity:.35}}
 
-.page{position:absolute;inset:0;padding:96px 88px 80px;display:flex;flex-direction:column}
+.page{position:absolute;inset:0;padding:96px 88px 60px;display:flex;flex-direction:column}
 .mast{display:flex;justify-content:space-between;align-items:baseline;font-size:34px;font-stretch:88%;text-shadow:0 1px 12px rgb(0 0 0 / .35)}
 .mast b{font-weight:560}.mast span{color:var(--quiet)}
-.say{margin:532px 0 0;font-size:64px;line-height:1.04;font-weight:290;font-stretch:96%;letter-spacing:-.028em;max-width:17ch}
+.say{margin:430px 0 0;font-size:60px;line-height:1.04;font-weight:290;font-stretch:96%;letter-spacing:-.028em;max-width:17ch}
 .say em{font-style:normal;color:var(--slow)}
 
 h2{margin:0 0 16px;font-size:26px;font-weight:560;font-stretch:84%;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet)}
@@ -44,7 +44,7 @@ h2{margin:0 0 16px;font-size:26px;font-weight:560;font-stretch:84%;letter-spacin
 .trip .t small{font-size:32px;letter-spacing:0;margin-left:.2em;color:var(--quiet);font-weight:400}
 .trip p{margin:8px 0 0;font-size:26px;font-stretch:86%;color:var(--quiet);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.map{margin-top:44px}
+.map{margin-top:40px}
 svg{display:block;overflow:visible}
 svg text{font-family:"Archivo";fill:var(--ink)}
 .lbl{font-size:30px;font-weight:560;font-stretch:90%}
@@ -56,7 +56,7 @@ svg text{font-family:"Archivo";fill:var(--ink)}
 .dots{stroke:var(--quiet);stroke-width:10;stroke-dasharray:2 16;stroke-linecap:round}
 .min.slow{fill:var(--slow)}.min.bad{fill:var(--bad)}
 
-.notes{list-style:none;margin:30px 0 0;padding:0;display:grid;gap:16px;font-size:30px;line-height:1.25;font-stretch:92%}
+.notes{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:14px;font-size:29px;line-height:1.25;font-stretch:92%}
 .notes li{display:grid;grid-template-columns:30px 1fr;gap:16px;align-items:baseline}
 .notes li::before{content:"";width:14px;height:14px;background:var(--slow);transform:translateY(-4px) rotate(45deg)}
 .notes li.now::before{background:var(--bad)}
@@ -75,30 +75,30 @@ svg text{font-family:"Archivo";fill:var(--ink)}
   <div class="trips" id="trips"></div>
   <div class="map">
     <h2>Our routes, now</h2>
-    <svg width="904" height="560" viewBox="0 0 904 900" preserveAspectRatio="xMinYMin meet" id="map">
-      <line class="dots" x1="70" y1="70" x2="390" y2="70"/>
-      <line class="dots" x1="70" y1="70" x2="70" y2="590"/>
-      <line class="leg" id="l41" x1="390" y1="70" x2="390" y2="590"/>
-      <line class="leg" id="l94w" x1="70" y1="590" x2="390" y2="590"/>
-      <line class="leg" id="l94e" x1="390" y1="590" x2="840" y2="590"/>
-      <path class="leg" id="l894" d="M390 590 V830 H840"/>
+    <svg width="904" height="540" viewBox="0 0 904 540" id="map">
+      <line class="dots" x1="70" y1="50" x2="390" y2="50"/>
+      <line class="dots" x1="70" y1="50" x2="70" y2="350"/>
+      <line class="leg" id="l41" x1="390" y1="50" x2="390" y2="350"/>
+      <line class="leg" id="l94w" x1="70" y1="350" x2="390" y2="350"/>
+      <line class="leg" id="l94e" x1="390" y1="350" x2="840" y2="350"/>
+      <path class="leg" id="l894" d="M390 350 V480 H840"/>
       <g fill="#0E151C" stroke="var(--ink)" stroke-width="5">
-        <circle cx="230" cy="70" r="20" fill="var(--ink)"/>
-        <circle cx="390" cy="70" r="13"/><circle cx="70" cy="70" r="13"/>
-        <circle cx="390" cy="590" r="20"/><circle cx="70" cy="590" r="13"/>
-        <circle cx="840" cy="590" r="20" fill="var(--ink)"/><circle cx="840" cy="830" r="20" fill="var(--ink)"/>
+        <circle cx="230" cy="50" r="18" fill="var(--ink)"/>
+        <circle cx="390" cy="50" r="12"/><circle cx="70" cy="50" r="12"/>
+        <circle cx="390" cy="350" r="18"/><circle cx="70" cy="350" r="12"/>
+        <circle cx="840" cy="350" r="18" fill="var(--ink)"/><circle cx="840" cy="480" r="18" fill="var(--ink)"/>
       </g>
-      <text class="lbl" x="230" y="30" text-anchor="middle">Home</text>
-      <text class="sub" x="230" y="122" text-anchor="middle">County Q</text>
-      <text class="sub" x="40" y="30">164</text><text class="sub" x="404" y="30">41</text>
-      <text class="sub" x="100" y="330">164 · closures only</text>
-      <text class="min" id="t41" x="430" y="330"></text>
-      <text class="min" id="t94w" x="110" y="560"></text>
-      <text class="lbl" x="430" y="640">Zoo</text>
-      <text class="lbl" x="840" y="545" text-anchor="end">Downtown</text>
-      <text class="min" id="t94e" x="600" y="640" text-anchor="middle"></text>
-      <text class="lbl" x="840" y="785" text-anchor="end">Airport</text>
-      <text class="min" id="t894" x="600" y="880" text-anchor="middle"></text>
+      <text class="lbl" x="230" y="14" text-anchor="middle">Home</text>
+      <text class="sub" x="230" y="96" text-anchor="middle">County Q</text>
+      <text class="sub" x="40" y="14">164</text><text class="sub" x="404" y="14">41</text>
+      <text class="sub" x="100" y="210">164 · closures only</text>
+      <text class="min" id="t41" x="420" y="210"></text>
+      <text class="min" id="t94w" x="100" y="325"></text>
+      <text class="lbl" x="420" y="396">Zoo</text>
+      <text class="lbl" x="840" y="310" text-anchor="end">Downtown</text>
+      <text class="min" id="t94e" x="840" y="396" text-anchor="end"></text>
+      <text class="lbl" x="840" y="440" text-anchor="end">Airport</text>
+      <text class="min" id="t894" x="840" y="530" text-anchor="end"></text>
     </svg>
   </div>
   <ul class="notes" id="notes"></ul>
@@ -126,7 +126,7 @@ function legText(k, l){
 function render(B){
   $("asof").textContent = "511 Wisconsin · Waze · " + B.asof.replace(" "," ");
   $("say").innerHTML = esc(B.say).replace(/(is (slow|backed up)[^.]*\.|right now\.)/, "<em>$1</em>");
-  $("trips").innerHTML = B.trips.map(t => `<div class="trip"><h3>${esc(t.name)}</h3><div class="t">${t.min ?? "–"}<small>min</small></div><p>${esc(t.route || "")}</p></div>`).join("");
+  $("trips").innerHTML = B.trips.map(t => `<div class="trip"><h3>${esc(t.name)}</h3><div class="t">${t.min ?? "–"}<small>min</small></div><p>${t.route ? "via " + esc(t.route) : ""}</p></div>`).join("");
   for (const [k, l] of Object.entries(B.legs)){
     const line = $("l"+k), tx = $("t"+k);
     if (line) line.setAttribute("class", "leg " + (l.status === "unknown" ? "" : l.status));
