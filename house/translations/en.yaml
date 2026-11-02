@@ -1,0 +1,4 @@
+configuration:
+  wi511_key:
+    name: 511 Wisconsin API key
+    description: For road conditions, incidents and cameras. Paste it here, not in a chat.
