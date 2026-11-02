@@ -19,7 +19,7 @@ SEGMENTS = {
     "894": "I-41 SB Burleigh St to Airport via I-94",
 }
 TRIPS = [("Downtown", "sensor.waze_drive_to_downtown"),
-         ("Airport", "sensor.waze_to_mke"),
+         ("Airport", "sensor.waze_drive_to_the_airport"),
          ("The Falls", "sensor.waze_drive_to_the_falls")]
 ROUTE_ROADS = {"I-41", "WI-164", "I-94", "I-894", "I-794"}
 # Where each leg's camera should look, and which roads count as on it
