@@ -19,7 +19,7 @@ from listen import Listen
 log = logging.getLogger("music")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 
 
 def load_options(path: str = "/data/options.json") -> dict:
@@ -99,6 +99,15 @@ class Music:
         op = b.get("op")
         if op == "turntable":
             return await self.play_turntable(b.get("rooms") or [])
+        if op == "volumes":
+            # Several rooms at once (a floor moved together, or evened out): {"levels": {room: 0..1}}
+            levels = b.get("levels") or {}
+            if not isinstance(levels, dict) or not levels or any(r not in self.by_name for r in levels):
+                raise web.HTTPForbidden(text="not a music room")
+            await asyncio.gather(*(self.ha_call("media_player", "volume_set", {
+                "entity_id": self.by_name[r]["sonos"], "volume_level": max(0.0, min(1.0, float(v)))})
+                for r, v in levels.items()))
+            return
         z = self.by_name.get(b.get("room"))
         if z is None:
             raise web.HTTPForbidden(text="not a music room")

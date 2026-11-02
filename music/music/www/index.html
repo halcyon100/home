@@ -22,15 +22,38 @@ h2 span{font-weight:400;color:var(--quiet);margin-left:.5em}
 .grp .a{margin:.2em 0 0;color:var(--quiet);font-stretch:92%}
 .grp .ctl{display:flex;gap:8px;margin-top:12px}
 .grp .members{grid-column:1/-1;display:grid;gap:6px}
-.mem{display:grid;grid-template-columns:minmax(0,9.5em) 1fr auto;gap:12px;align-items:center;font-stretch:90%}
+.mem{display:grid;grid-template-columns:minmax(0,7.5em) 1fr 3.2em;gap:12px;align-items:center;font-stretch:90%}
+.fl{display:grid;gap:6px}
+.fl + .fl{margin-top:10px}
+/* A floor's master row: the band is the spread of its speakers, the tick their average */
+.fm{display:grid;grid-template-columns:minmax(0,7.5em) 1fr 3.2em;gap:12px;align-items:center;padding-bottom:4px}
+.fm>span{font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;font-stretch:112%;font-weight:560;color:var(--quiet)}
+.even{appearance:none;border:0;background:none;color:var(--ink);font-size:var(--s-1);font-stretch:84%;cursor:pointer;padding:.3em 0;text-align:left;
+  text-decoration:underline;text-decoration-color:var(--quiet);text-underline-offset:3px}
+.even[hidden]{display:block;visibility:hidden}
+/* Level: − meter number + */
+.lv{display:grid;grid-template-columns:26px minmax(0,1fr) 2.1em 26px;gap:4px;align-items:center}
+.lv .st{appearance:none;width:26px;height:26px;border:0;background:none;border-radius:50%;color:var(--quiet);cursor:pointer;
+  font:inherit;font-size:17px;line-height:1;display:grid;place-items:center;padding:0}
+.lv .st:hover{color:var(--ink);background:var(--well)}
+.lv .bar{position:relative;height:26px;cursor:pointer;touch-action:none;outline:none}
+.lv .bar::before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--hair)}
+.lv .fill{position:absolute;left:0;top:calc(50% - 2px);height:4px;width:var(--v);background:var(--ink);border-radius:2px}
+.lv .band{position:absolute;top:calc(50% - 5px);height:10px;left:var(--lo);width:calc(var(--hi) - var(--lo));min-width:2px;
+  background:var(--quiet);opacity:.45;border-radius:2px}
+.lv .tick{position:absolute;top:calc(50% - 8px);height:16px;width:2px;left:calc(var(--v) - 1px);background:var(--ink)}
+.lv .bar:focus-visible{box-shadow:0 0 0 2px var(--light);border-radius:2px}
+.lv .num{text-align:right;font-variant-numeric:tabular-nums;font-stretch:84%;font-weight:520}
+.lv.off{opacity:.4;pointer-events:none}
 .mem .x{appearance:none;border:0;background:none;color:var(--quiet);font-size:var(--s-1);font-stretch:84%;cursor:pointer;padding:.3em 0}
 .mem .x:hover{color:var(--ink)}
 .add{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .chip{appearance:none;border:1px dashed var(--hair);background:none;border-radius:var(--r-pill);padding:.25em .8em .3em;font-size:var(--s-1);font-stretch:86%;color:var(--quiet);cursor:pointer}
 .chip:hover{color:var(--ink);border-color:var(--ink)}
 .tvb{display:inline-block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-stretch:90%;border:1px solid var(--hair);border-radius:2px;padding:.1em .45em;margin-left:.5em;color:var(--quiet);vertical-align:.15em}
+.rooms h2 + .fm{margin:-.3em 0 .2em}
 .rooms{display:grid;gap:clamp(28px,4vw,48px) clamp(28px,4vw,56px);grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr))}
-.rm{display:grid;grid-template-columns:minmax(0,1fr) 7.5em auto;gap:12px;align-items:center;padding:.62em 0;border-top:1px solid var(--hair)}
+.rm{display:grid;grid-template-columns:minmax(0,1fr) minmax(10.5em,13em) auto;gap:12px;align-items:center;padding:.62em 0;border-top:1px solid var(--hair)}
 .rm b{font-weight:480;font-stretch:94%}
 .rm small{display:block;color:var(--quiet);font-size:var(--s-1);font-stretch:84%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rm .btn{white-space:nowrap}
@@ -204,7 +227,63 @@ async function loadNow(){
   catch(e){ if (!N) $("nh").textContent = "The speakers didn't answer."; }
   if (view==="now" && !document.hidden) nowTimer = setTimeout(loadNow, 4000);
 }
-const vol = (room, v) => `<input type="range" min="0" max="100" value="${Math.round((v||0)*100)}" style="--v:${Math.round((v||0)*100)}%" data-vol="${esc(room)}" aria-label="${esc(room)} volume">`;
+/* Levels. Each speaker shows its number; a floor's master row moves them together or evens them out.
+   Changes show at once and go out in one batch; the speakers' own report wins again after a few seconds. */
+const STEP = 2, held = {}, outbox = {};
+let sendTimer = null;
+function level(room){
+  const h = held[room];
+  if (h && Date.now() < h.until) return h.v;
+  const r = N && N.rooms.find(x=>x.name===room);
+  return r && r.volume != null && r.state !== "unavailable" ? Math.round(r.volume*100) : null;
+}
+function setLevels(levels){
+  for (const [room, v] of Object.entries(levels)){
+    const c = Math.max(0, Math.min(100, Math.round(v)));
+    held[room] = {v:c, until: Date.now()+6000}; outbox[room] = c;
+  }
+  paint();
+  clearTimeout(sendTimer);
+  sendTimer = setTimeout(()=>{
+    const levels = Object.fromEntries(Object.entries(outbox).map(([r,v])=>[r, v/100]));
+    for (const k in outbox) delete outbox[k];
+    if (Object.keys(levels).length) act({op:"volumes", levels});
+  }, 300);
+}
+const stats = rooms => {
+  const v = rooms.map(level).filter(x=>x!=null);
+  if (!v.length) return null;
+  return {lo: Math.min(...v), hi: Math.max(...v), avg: Math.round(v.reduce((a,b)=>a+b,0)/v.length)};
+};
+function meter(rooms, master, label){
+  return `<div class="lv${master?" m":""}" data-rooms="${esc(JSON.stringify(rooms))}">
+    <button class="st" data-step="-1" aria-label="${esc(label)} quieter">−</button>
+    <div class="bar" role="slider" tabindex="0" aria-label="${esc(label)} volume" aria-valuemin="0" aria-valuemax="100">
+      ${master?`<i class="band"></i><i class="tick"></i>`:`<i class="fill"></i>`}</div>
+    <span class="num"></span>
+    <button class="st" data-step="1" aria-label="${esc(label)} louder">+</button></div>`;
+}
+const roomsOf = el => JSON.parse(el.dataset.rooms);
+function paint(){
+  document.querySelectorAll(".lv").forEach(el=>{
+    const s = stats(roomsOf(el));
+    el.classList.toggle("off", !s);
+    if (!s) { el.querySelector(".num").textContent = "–"; return; }
+    el.style.setProperty("--v", s.avg+"%"); el.style.setProperty("--lo", s.lo+"%"); el.style.setProperty("--hi", s.hi+"%");
+    el.querySelector(".num").textContent = s.avg;
+    el.querySelector(".bar").setAttribute("aria-valuenow", s.avg);
+    const ev = el.parentElement.querySelector(":scope > .even");
+    if (ev) ev.hidden = s.hi - s.lo < 2;
+  });
+}
+// Move a set of rooms so their average lands on t, each keeping its offset (from where they started)
+function moveTo(rooms, base, t){
+  const v = rooms.filter(r=>base[r]!=null), avg = v.reduce((a,r)=>a+base[r],0)/(v.length||1);
+  setLevels(Object.fromEntries(v.map(r=>[r, base[r] + (t - avg)])));
+}
+function floorRow(name, rooms){
+  return `<div class="fm"><span>${esc(name)}</span>${meter(rooms, true, name)}<button class="even" data-even="${esc(JSON.stringify(rooms))}" hidden>Even</button></div>`;
+}
 function renderNow(){
   if (!N || !N.rooms) return;
   const rooms = N.rooms, byName = Object.fromEntries(rooms.map(r=>[r.name,r]));
@@ -239,19 +318,27 @@ function renderNow(){
           <button class="ib sm" data-op="previous" data-room="${esc(r.name)}" aria-label="Previous">${IC.prev}</button>
           <button class="ib sm" data-op="play_pause" data-room="${esc(r.name)}" aria-label="${r.state==="playing"?"Pause":"Play"}">${r.state==="playing"?IC.pause:IC.play}</button>
           <button class="ib sm" data-op="next" data-room="${esc(r.name)}" aria-label="Next">${IC.next}</button></div>`}</div>
-      <div class="members">${g.members.map(n=>{ const m = byName[n];
-        return `<div class="mem"><span>${esc(n)}${m.tv?'<span class="tvb">TV</span>':""}</span>${vol(n, m.volume)}${g.members.length>1?`<button class="x" data-op="leave" data-room="${esc(n)}">Leave</button>`:"<span></span>"}</div>`;}).join("")}</div>
+      <div class="members">${(()=>{
+        const fl = Object.keys(FLOORS).map(f=>[f, g.members.filter(n=>byName[n].floor===f)]).filter(([,m])=>m.length);
+        const odd = g.members.filter(n=>!FLOORS[byName[n].floor]); if (odd.length) fl.push(["", odd]);
+        const row = n => { const m = byName[n];
+          return `<div class="mem"><span>${esc(n)}${m.tv?'<span class="tvb">TV</span>':""}</span>${meter([n], false, n)}${g.members.length>1?`<button class="x" data-op="leave" data-room="${esc(n)}">Leave</button>`:"<span></span>"}</div>`; };
+        return (fl.length>1 ? floorRow("All rooms", g.members) : "") +
+          fl.map(([f,m])=>`<div class="fl">${m.length>1 || fl.length>1 ? floorRow(FLOORS[f]||"Elsewhere", m) : ""}${m.map(row).join("")}</div>`).join("");
+      })()}</div>
       ${r.tv||!canAdd.length?"":`<div class="add">${canAdd.map(x=>`<button class="chip" data-op="join" data-room="${esc(x.name)}" data-to="${esc(r.name)}">+ ${esc(x.name)}</button>`).join("")}</div>`}
     </article>`;
   }).join("");
   const byFloor = {};
   idle.forEach(r=>{ (byFloor[r.floor]=byFloor[r.floor]||[]).push(r); });
   $("rooms").innerHTML = Object.keys(FLOORS).filter(f=>byFloor[f]).map(f=>`<div><h2>${FLOORS[f]}<span>${byFloor[f].length}</span></h2>${
-    byFloor[f].map(r=>`<div class="rm"><span><b>${esc(r.name)}</b><small>${r.state==="unavailable"?"Not answering":r.tv_on?"Apple TV on":r.state==="paused"?"Paused":"Quiet"}</small></span>${vol(r.name, r.volume)}${
+    byFloor[f].length>1 ? floorRow("Whole floor", byFloor[f].map(r=>r.name)) : ""}${
+    byFloor[f].map(r=>`<div class="rm"><span><b>${esc(r.name)}</b><small>${r.state==="unavailable"?"Not answering":r.tv_on?"Apple TV on":r.state==="paused"?"Paused":"Quiet"}</small></span>${meter([r.name], false, r.name)}${
       g0 && !g0.lead.tv ? `<button class="btn ghost small" data-op="join" data-room="${esc(r.name)}" data-to="${esc(g0.lead.name)}">Join</button>` : "<span></span>"}</div>`).join("")}</div>`).join("");
   $("tt").innerHTML = N.turntable.available ? `<h2>Turntable</h2>
     <button class="btn small" data-turntable>${N.turntable.playing?"Also play on":"Put it on"} ${esc(FLOORS[place].toLowerCase())}</button>
     <p>Drop the needle, then send it to a floor. It plays through the Sonos Connect in the nook.</p>` : "";
+  paint();
 }
 async function act(body){
   try{ await fetch("api/act",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); }
@@ -262,8 +349,33 @@ document.addEventListener("click", e=>{
   if (b){ act({op:b.dataset.op, room:b.dataset.room, to:b.dataset.to}); b.classList.add("busy"); return; }
   if (e.target.closest("[data-turntable]")) act({op:"turntable", place});
 });
-document.addEventListener("input", e=>{ const r = e.target.closest("input[data-vol]"); if (r){ dragging = true; r.style.setProperty("--v", r.value+"%"); } });
-document.addEventListener("change", e=>{ const r = e.target.closest("input[data-vol]"); if (r){ dragging = false; act({op:"volume", room:r.dataset.vol, value:r.value/100}); } });
+// − / + : every room in the meter moves by the same step
+document.addEventListener("click", e=>{
+  const st = e.target.closest(".lv [data-step]");
+  if (st){ const rooms = roomsOf(st.closest(".lv")), d = STEP * +st.dataset.step;
+    setLevels(Object.fromEntries(rooms.filter(r=>level(r)!=null).map(r=>[r, level(r)+d]))); return; }
+  const ev = e.target.closest("[data-even]");
+  if (ev){ const rooms = JSON.parse(ev.dataset.even), s = stats(rooms);
+    if (s) setLevels(Object.fromEntries(rooms.filter(r=>level(r)!=null).map(r=>[r, s.avg]))); }
+});
+// Drag or tap the bar: one speaker goes there; a floor moves together, keeping each speaker's offset
+let drag = null;
+const at = (bar, x) => { const b = bar.getBoundingClientRect(); return Math.round(Math.max(0, Math.min(1, (x - b.left) / b.width)) * 100); };
+document.addEventListener("pointerdown", e=>{
+  const bar = e.target.closest(".lv .bar"); if (!bar) return;
+  const rooms = roomsOf(bar.closest(".lv"));
+  drag = {bar, rooms, base: Object.fromEntries(rooms.map(r=>[r, level(r)]))};
+  dragging = true; bar.setPointerCapture(e.pointerId); moveTo(rooms, drag.base, at(bar, e.clientX)); e.preventDefault();
+});
+document.addEventListener("pointermove", e=>{ if (drag) moveTo(drag.rooms, drag.base, at(drag.bar, e.clientX)); });
+const endDrag = ()=>{ if (drag){ drag = null; dragging = false; } };
+document.addEventListener("pointerup", endDrag); document.addEventListener("pointercancel", endDrag);
+document.addEventListener("keydown", e=>{
+  const bar = e.target.closest(".lv .bar"); if (!bar) return;
+  const d = {ArrowRight:STEP, ArrowUp:STEP, ArrowLeft:-STEP, ArrowDown:-STEP}[e.key]; if (!d) return;
+  const rooms = roomsOf(bar.closest(".lv"));
+  setLevels(Object.fromEntries(rooms.filter(r=>level(r)!=null).map(r=>[r, level(r)+d]))); e.preventDefault();
+});
 document.addEventListener("visibilitychange", ()=>{ if (!document.hidden) (view==="now"?loadNow:loadListen)(); });
 
 N = kept("music-last-now", 6*36e5); L = kept("music-last-listen", 7*864e5);
