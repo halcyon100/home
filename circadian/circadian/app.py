@@ -16,7 +16,7 @@ from astral.sun import sun as astral_sun
 from engine import (KEEP_OFF, OFF, ON, SHUT, Overrides, Schedule, daylight_zones_from_options,
                     keyframes_from_options, pct_to_255, resolve)
 
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.7.1"
 log = logging.getLogger("circadian")
 
 WAKE_WINDOW = timedelta(minutes=15)   # a wake keyframe can fire up to this long after its time
@@ -116,6 +116,7 @@ class Circadian:
         self.last_reset_day = None
         self.my_user = None
         self.early_wake = None      # (start, shift, catch-up end)
+        self._curves: dict = {}     # (date, light) -> the day's curve, for the day report
         self.recent_call_by_entity: dict[str, dict] = {}
         self.state_path = os.environ.get("CIRCADIAN_STATE", "/data/circadian_state.json")
         self._saved = None
@@ -151,9 +152,16 @@ class Circadian:
         self.tz = ZoneInfo(cfg.get("time_zone") or "America/Chicago")
         loc = LocationInfo("home", "", cfg.get("time_zone"), cfg["latitude"], cfg["longitude"])
 
+        suns: dict = {}
+
         def sunfn(day):
-            s = astral_sun(loc.observer, date=day, tzinfo=self.tz)
-            return s["sunrise"], s["sunset"]
+            # Asked thousands of times per day report (every keyframe, every sample); the answer only changes by date
+            if day not in suns:
+                if len(suns) > 8:
+                    suns.clear()
+                s = astral_sun(loc.observer, date=day, tzinfo=self.tz)
+                suns[day] = (s["sunrise"], s["sunset"])
+            return suns[day]
 
         self.schedule = Schedule(self.keyframes, sunfn, self.tz)
         try:
@@ -764,11 +772,17 @@ class Circadian:
             st = self.states.get(e) or {}
             a = st.get("attributes", {})
             t = self.ov.track(e)
-            curve = []
-            for ts in samples:
-                tgt = self.schedule.target_at(e, ts)
-                curve.append([round(tgt.brightness, 1), tgt.kelvin] if tgt is not None and tgt.kind == "level"
-                             else None)
+            curve = self._curves.get((now.date(), e))
+            if curve is None:
+                # The day's curve depends only on the schedule and the date: work it out once a day
+                curve = []
+                for ts in samples:
+                    tgt = self.schedule.target_at(e, ts)
+                    curve.append([round(tgt.brightness, 1), tgt.kelvin] if tgt is not None and tgt.kind == "level"
+                                 else None)
+                if len(self._curves) > 200:
+                    self._curves.clear()
+                self._curves[(now.date(), e)] = curve
             w = self.want(e, vnow)
             lights[e] = {
                 "name": a.get("friendly_name", e),
