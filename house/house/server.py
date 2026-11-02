@@ -24,7 +24,7 @@ from roads import Roads
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.19.1"
+VERSION = "0.19.2"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -578,6 +578,13 @@ def make_app(house: House) -> web.Application:
     async def api_roads(_req):
         return web.json_response(roads.report())
 
+    async def api_roads_cam(req):
+        shot = await roads.snapshot(req.match_info["view"])
+        if not shot:
+            raise web.HTTPNotFound()
+        body, ctype = shot
+        return web.Response(body=body, content_type=ctype.split(";")[0], headers={"Cache-Control": "max-age=60"})
+
     async def api_guide_versions(_req):
         return web.json_response({"versions": guide.versions()})
 
@@ -586,6 +593,7 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/", index)
     app.router.add_get("/api/state", api_state)
     app.router.add_get("/api/roads", api_roads)
+    app.router.add_get("/api/roads/cam/{view}", api_roads_cam)
     app.router.add_get("/api/devices", api_devices)
     app.router.add_post("/api/do", api_do)
     app.router.add_static("/shared", WWW / "shared")

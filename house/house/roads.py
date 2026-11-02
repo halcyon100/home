@@ -56,6 +56,23 @@ def nearby_events(events: list, home: tuple[float, float], radius: float = NEAR_
     return out
 
 
+def nearby_cameras(rows: list, home: tuple[float, float], radius: float = NEAR_MILES) -> list[dict]:
+    out = []
+    for c in rows or []:
+        lat, lon = _f(c.get("Latitude")), _f(c.get("Longitude"))
+        if lat is None or lon is None:
+            continue
+        d = miles(home[0], home[1], lat, lon)
+        if d > radius:
+            continue
+        views = [{"id": v.get("Id"), "url": v.get("Url"), "status": v.get("Status"), "what": v.get("Description"),
+                  "video": v.get("VideoUrl")} for v in (c.get("Views") or [])]
+        out.append({"id": c.get("Id"), "road": (c.get("Roadway") or "").strip(), "direction": c.get("Direction") or "",
+                    "where": c.get("Location") or "", "lat": lat, "lon": lon, "miles": round(d, 1), "views": views})
+    out.sort(key=lambda x: x["miles"])
+    return out
+
+
 def nearby_times(rows: list, home: tuple[float, float], radius: float = NEAR_MILES) -> list[dict]:
     out = []
     for t in rows or []:
@@ -78,6 +95,8 @@ class Roads:
         self.key = (key or "").strip()
         self.events: list = []
         self.times: list = []
+        self.cameras: list = []
+        self.cameras_at = 0.0
         self.updated = 0.0
         self.error: str | None = None
         self.task = None
@@ -117,6 +136,8 @@ class Roads:
             return
         ev, tt = await self._get("event"), await self._get("traveltimes")
         self.events, self.times = nearby_events(ev, here), nearby_times(tt, here)
+        if time.time() - self.cameras_at > 3600:          # cameras rarely move: once an hour
+            self.cameras, self.cameras_at = nearby_cameras(await self._get("cameras"), here), time.time()
         self.updated, self.error = time.time(), None
         log.info("Roads: %d incidents within %d miles, %d travel times", len(self.events), NEAR_MILES, len(self.times))
 
@@ -129,6 +150,24 @@ class Roads:
                 log.warning("Roads: %s", ex)
             await asyncio.sleep(EVERY)
 
+    def view_url(self, view_id) -> str | None:
+        for c in self.cameras:
+            for v in c["views"]:
+                if str(v["id"]) == str(view_id):
+                    return v["url"]
+        return None
+
+    async def snapshot(self, view_id) -> tuple[bytes, str] | None:
+        """One camera's current picture, fetched by the box (511's own URL; no key needed for images)."""
+        url = self.view_url(view_id)
+        if not url or not url.startswith("https://511wi.gov/"):
+            return None
+        async with self.house.session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as r:
+            if r.status != 200:
+                return None
+            return await r.read(), r.content_type or "application/octet-stream"
+
     def report(self) -> dict:
         return {"configured": self.configured, "updated": self.updated or None, "error": self.error,
-                "near_miles": NEAR_MILES, "events": self.events, "times": self.times}
+                "near_miles": NEAR_MILES, "events": self.events, "times": self.times,
+                "cameras": self.cameras}
