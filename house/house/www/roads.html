@@ -7,9 +7,13 @@
 <style>
 @font-face{font-family:"Archivo";src:url("shared/archivo.woff2") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%}
 /* Drawn at 1080 × 1920 like the Kitchen board, so it can go on the Frame; scaled down on a phone */
-:root{--ink:#F4F1EA;--quiet:rgb(244 241 234 / .66);--hair:rgb(244 241 234 / .24);--ok:#F4F1EA;--slow:#F2B45A;--bad:#E8664A;--ground:#0E151C}
-html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:var(--ground)}
-body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-settings:"tnum" 1,"case" 1;-webkit-font-smoothing:antialiased;transform-origin:0 0}
+#stage{--ink:#F4F1EA;--quiet:rgb(244 241 234 / .66);--hair:rgb(244 241 234 / .24);--ok:#F4F1EA;--slow:#F2B45A;--bad:#E8664A;--ground:#0E151C}
+html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#0E151C}
+body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-settings:"tnum" 1,"case" 1;-webkit-font-smoothing:antialiased}
+#stage{position:relative;width:1080px;height:1920px;overflow:hidden;transform-origin:0 0;color:var(--ink);font-family:"Archivo",system-ui,sans-serif}
+/* In the House app (not on the Frame): the app's bar on top, the board scaled to the screen below it */
+html.app,html.app body{width:auto;height:auto;overflow:auto}
+html.app #wrap{overflow:hidden}
 
 /* The camera, twice: soft and huge as the ground, and sharp across the top third */
 .fill{position:absolute;inset:-160px;background-size:cover;background-position:center;filter:blur(80px) saturate(1.25) brightness(.5);transform:scale(1.1)}
@@ -67,6 +71,7 @@ svg text{font-family:"Archivo";fill:var(--ink)}
 </style>
 </head>
 <body>
+<div id="wrap"><div id="stage">
 <div class="fill" id="fill"></div>
 <div class="hero" id="hero"><img id="cam" alt=""><div class="top"></div><div class="frost"><i></i><i></i><i></i><i></i></div><div class="cap" id="cap"></div></div>
 <div class="page">
@@ -109,11 +114,29 @@ svg text{font-family:"Archivo";fill:var(--ink)}
     <span><i style="border-top:6px dotted var(--quiet)"></i>No speeds, closures only</span>
   </div>
 </div>
+</div></div>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // On a phone, shrink the 1080-wide page to fit
-function fit(){ const k = Math.min(1, innerWidth / 1080); document.body.style.transform = k < 1 ? `scale(${k})` : ""; document.documentElement.style.height = (1920*k)+"px"; }
+// On the Frame (?frame=1) it's the bare 1080 × 1920 board. In the House app it gets the app's bar,
+// with Back to Home, and scales to the screen.
+const APP = !new URLSearchParams(location.search).has("frame");
+if (APP){
+  document.documentElement.classList.add("app");
+  const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "shared/tokens.css"; document.head.append(l);
+  const bar = document.createElement("app-bar"); bar.setAttribute("app", "house");
+  bar.innerHTML = `<nav slot="tabs" class="app-tabs" aria-label="Roads"><span aria-selected="true">Roads</span></nav>`;
+  bar.addEventListener("back", e => { e.preventDefault(); location.href = "./"; });
+  document.body.prepend(bar);
+  const sc = document.createElement("script"); sc.src = "shared/appnav.js"; document.head.append(sc);
+}
+function fit(){
+  if (!APP) return;
+  const k = Math.min(1, document.documentElement.clientWidth / 1080);
+  $("stage").style.transform = `scale(${k})`;
+  $("wrap").style.height = (1920 * k) + "px";
+}
 addEventListener("resize", fit); fit();
 
 function legText(k, l){

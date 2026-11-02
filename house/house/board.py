@@ -610,7 +610,7 @@ class Board:
         proc = await asyncio.create_subprocess_exec(
             "chromium", "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--mute-audio",
             "--force-device-scale-factor=2", "--window-size=1080,1920", "--virtual-time-budget=10000",
-            f"--screenshot={out}", f"http://127.0.0.1:8099/{page}",
+            f"--screenshot={out}", f"http://127.0.0.1:8099/{page}?frame=1",
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
         _, err = await asyncio.wait_for(proc.communicate(), timeout=60)
         if proc.returncode != 0:
