@@ -22,6 +22,10 @@ TRIPS = [("Downtown", "sensor.waze_drive_to_downtown"),
          ("Airport", "sensor.waze_to_mke"),
          ("The Falls", "sensor.waze_drive_to_the_falls")]
 ROUTE_ROADS = {"I-41", "WI-164", "I-94", "I-894", "I-794"}
+# Where each leg's camera should look, and which roads count as on it
+LEG_CAMS = {"41": ("I-41", (43.107, -88.080)), "94w": ("I-94", (43.037, -88.140)),
+            "94e": ("I-94", (43.034, -87.975)), "894": ("894", (42.990, -87.990))}
+WEST_OF_164 = -88.21            # 94 west of 164 isn't on our way (Oconomowoc and beyond)
 DEFAULT_CAMERA = "991"          # 41 at County Q: our on-ramp
 DAYS = {"M": 0, "T": 1, "Tu": 1, "W": 2, "Th": 3, "F": 4, "Sat": 5, "Sa": 5, "Sun": 6, "Su": 6}
 DIRS = {"S": "south", "N": "north", "E": "east", "W": "west"}
@@ -88,10 +92,17 @@ def _name(s: str) -> str:
     s = s.replace("AVENUE", "AVE").replace("'", "")
     s = re.sub(r"\b(RD|ROAD)\b\.?", "", s, flags=re.I).strip()
     s = s.replace("COUNTY ", "County ").replace("WIS ", "WIS ")
+    fixed = {"ST": "St", "AVE": "Ave", "DR": "Dr", "S": "S", "N": "N", "E": "E", "W": "W"}
     words = []
     for w in s.split():
-        words.append(w if (w.isupper() and len(w) <= 3 and w not in ("AVE",)) or any(c.isdigit() for c in w)
-                     else w.capitalize())
+        if w in fixed:
+            words.append(fixed[w])
+        elif any(c.isdigit() for c in w):
+            words.append(re.sub(r"(\d+)(ST|ND|RD|TH)\b", lambda m: m.group(1) + m.group(2).lower(), w))
+        elif w.isupper() and len(w) <= 3:
+            words.append(w)                      # PP, WIS
+        else:
+            words.append(w.capitalize())
     return " ".join(words)
 
 
@@ -115,7 +126,9 @@ def closures(events: list, now: datetime, horizon_days: int = 4, limit: int = 4)
     groups: dict = {}
     for e in events:
         road = (e.get("road") or "").strip()
-        if road not in ROUTE_ROADS:
+        if road not in ROUTE_ROADS or "shoulder" in (e.get("what") or "").lower():
+            continue
+        if road == "I-94" and e.get("lon") is not None and e["lon"] < WEST_OF_164:
             continue
         w = what(e.get("what", ""))
         if not w:
@@ -212,9 +225,11 @@ def nearest_camera(cameras: list, lat: float, lon: float) -> dict | None:
 def pick_camera(cameras: list, lg: dict, worst_key: str | None) -> dict | None:
     def live(c):
         return c and any((v.get("status") or "").lower() == "enabled" for v in c["views"])
-    if worst_key and lg[worst_key].get("mid"):
-        c = nearest_camera(cameras, *lg[worst_key]["mid"])
-        if live(c):
+    if worst_key in LEG_CAMS:
+        road, (lat, lon) = LEG_CAMS[worst_key]
+        on_leg = [c for c in cameras if road in (c.get("road") or "") and live(c)]
+        c = nearest_camera(on_leg, lat, lon)
+        if c:
             return c
     for c in cameras:
         if any(str(v["id"]) == DEFAULT_CAMERA for v in c["views"]):

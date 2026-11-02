@@ -63,3 +63,15 @@ def test_headline_leads_with_the_problem():
     say, worst = rb.headline(lg, [], [])
     assert worst == "41" and say == "41 south is backed up: 24 min to the Zoo, usually 15."
     assert rb.headline(rb.legs([]), [], [])[0] == "Clear to downtown and the airport."
+
+
+def test_names_read_like_signs():
+    import roadboard as rb
+    assert rb.what("Ramp Full Closure on I-94 EB at ON RAMP FROM WIS 181 / S 84TH ST. Daily")[1] == "WIS 181 / S 84th St entrance"
+
+
+def test_camera_on_the_slow_leg():
+    import roadboard as rb
+    cams = [{"road": "US 18", "lat": 43.03, "lon": -88.0, "where": "US 18", "views": [{"id": 1, "status": "Enabled"}]},
+            {"road": "I-94", "lat": 43.034, "lon": -87.97, "where": "I-94 at 35th", "views": [{"id": 2, "status": "Enabled"}]}]
+    assert rb.pick_camera(cams, {}, "94e")["where"] == "I-94 at 35th"

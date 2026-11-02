@@ -49,7 +49,7 @@ def nearby_events(events: list, home: tuple[float, float], radius: float = NEAR_
                     "what": (e.get("Description") or "").strip(), "closed": bool(e.get("IsFullClosure")),
                     "severity": e.get("Severity") or "", "lanes": e.get("LanesAffected") or "",
                     "miles": round(d, 1), "updated": e.get("LastUpdated"), "ends": e.get("PlannedEndDate"),
-                    "county": e.get("County") or ""})
+                    "county": e.get("County") or "", "lat": lat, "lon": lon})
     # Closures and crashes first, then the closest
     rank = {"accidentsAndIncidents": 0, "closures": 1, "roadwork": 2}
     out.sort(key=lambda x: (not x["closed"], rank.get(x["type"], 3), x["miles"]))
