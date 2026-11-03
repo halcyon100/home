@@ -88,3 +88,10 @@ def test_145_only_when_the_zoo_is_bad_and_it_saves_ten():
     assert rb.alternate(routes, calm, 5)["show"] is False            # the Zoo isn't bad: no 145
     a = rb.alternate(routes, red, 8)
     assert (a["via145"], a["zoo"]) == (44, 53)
+
+
+def test_route_names():
+    import roadboard as rb
+    assert rb.short_route("I-41 S; WIS-145 S; W Fond du Lac Ave Milwaukee") == "W Fond du Lac Ave"
+    assert rb.short_route("Willow Creek Rd Richfield; I-41 S") == "I-41 S"
+    assert rb.short_route("County Line Rd Lisbon Twp (Waukesha); Appleton Ave Menomonee Falls") == "Appleton Ave"

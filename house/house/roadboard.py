@@ -242,7 +242,10 @@ def short_route(r: str | None) -> str | None:
     if not r:
         return None
     last = r.split(";")[-1].strip()
-    m = re.match(r"(.*?\b(?:Rd|Ave|St|Dr|Blvd|Pkwy|Way|Hwy|[NSEW]))\b", last)
+    m = re.match(r"((?:I|US|WIS)-\d+(?: [NSEW])?)\b", last)          # a highway: "I-41 S"
+    if m:
+        return m.group(1)
+    m = re.match(r"(.+?\b(?:Rd|Ave|St|Dr|Blvd|Pkwy|Way|Hwy))\b", last)  # a street: "W Fond du Lac Ave"
     return (m.group(1) if m else last).strip()
 
 
@@ -273,6 +276,10 @@ def build(report: dict, states: dict, now: datetime, alt_minutes: float = 10) ->
         trips.append({"name": name, "min": m, "route": short_route((st.get("attributes") or {}).get("route"))})
     say, worst = headline(lg, cl, trips)
     alt = alternate(report.get("routes") or [], lg, alt_minutes)
+    # Downtown is our way, through the Zoo, door to door, whatever Waze would pick; 145 rides along
+    # only when it's the call
+    if alt.get("zoo") is not None:
+        trips[0].update(min=alt["zoo"], route="the Zoo", alt=alt["via145"] if alt["show"] else None)
     if alt["show"]:
         say = f"The Zoo's backed up: {alt['zoo']} min. 145 \u2620\ufe0f is {alt['via145']}."
     cam = pick_camera(cameras, lg, worst)
