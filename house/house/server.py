@@ -25,7 +25,7 @@ import roadboard
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.22.0"
+VERSION = "0.23.0"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -453,7 +453,7 @@ def make_app(house: House) -> web.Application:
     app = web.Application()
     board = Board(house, house.opts)
     guide = Guide()
-    roads = Roads(house, house.opts.get("wi511_key"))
+    roads = Roads(house, house.opts.get("wi511_key"), house.opts.get("roads_downtown"))
     board.roads = roads
 
     async def on_start(_app):
@@ -606,7 +606,8 @@ def make_app(house: House) -> web.Application:
 
     async def api_roads_board(_req):
         by = {s["entity_id"]: s for s in await house.all_states()}
-        return web.json_response(roadboard.build(roads.report(), by, datetime.now(board.tz)))
+        return web.json_response(roadboard.build(roads.report(), by, datetime.now(board.tz),
+                                                 float(house.opts.get("roads_alt_minutes", 10))))
 
     async def api_roads_cam(req):
         shot = await roads.snapshot(req.match_info["view"])

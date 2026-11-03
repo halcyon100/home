@@ -57,6 +57,7 @@ svg text{font-family:"Archivo";fill:var(--ink)}
 .min tspan{fill:var(--quiet);font-weight:400}
 .leg{stroke:var(--ok);stroke-width:14;stroke-linecap:round;fill:none}
 .leg.slow{stroke:var(--slow)}.leg.bad{stroke:var(--bad)}
+.leg.alt{stroke:var(--ink);stroke-width:10;stroke-dasharray:18 12;stroke-linecap:butt;stroke-linejoin:round}
 .dots{stroke:var(--quiet);stroke-width:10;stroke-dasharray:2 16;stroke-linecap:round}
 .min.slow{fill:var(--slow)}.min.bad{fill:var(--bad)}
 
@@ -87,6 +88,10 @@ svg text{font-family:"Archivo";fill:var(--ink)}
       <line class="leg" id="l94w" x1="70" y1="350" x2="390" y2="350"/>
       <line class="leg" id="l94e" x1="390" y1="350" x2="840" y2="350"/>
       <path class="leg" id="l894" d="M390 350 V480 H840"/>
+      <!-- 145: only drawn when the Zoo is bad and it saves real time -->
+      <g id="alt" style="display:none"><path class="leg alt" d="M390 112 H700 L840 252 V350"/>
+        <circle cx="390" cy="112" r="10" fill="#0E151C" stroke="var(--ink)" stroke-width="5"/>
+        <text class="min" id="talt" x="545" y="94" text-anchor="middle"></text></g>
       <g fill="#0E151C" stroke="var(--ink)" stroke-width="5">
         <circle cx="230" cy="50" r="18" fill="var(--ink)"/>
         <circle cx="390" cy="50" r="12"/><circle cx="70" cy="50" r="12"/>
@@ -155,6 +160,9 @@ function render(B){
     if (line) line.setAttribute("class", "leg " + (l.status === "unknown" ? "" : l.status));
     if (tx){ tx.innerHTML = legText(k, l); tx.setAttribute("class", "min " + (l.status === "slow" || l.status === "bad" ? l.status : "")); }
   }
+  const A = B.alt || {};
+  $("alt").style.display = A.show ? "" : "none";
+  if (A.show) $("talt").textContent = `145 \u2620\ufe0f · ${A.via145} min`;
   $("notes").innerHTML = B.closures.map(c => `<li class="${c.now?"now":""}"><div><b>${esc(c.when)}</b> <span>${esc(c.text)}</span></div></li>`).join("");
   if (B.camera){
     const src = `api/roads/cam/${encodeURIComponent(B.camera.view)}?t=${Date.now()}`;

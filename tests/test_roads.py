@@ -75,3 +75,16 @@ def test_camera_on_the_slow_leg():
     cams = [{"road": "US 18", "lat": 43.03, "lon": -88.0, "where": "US 18", "views": [{"id": 1, "status": "Enabled"}]},
             {"road": "I-94", "lat": 43.034, "lon": -87.97, "where": "I-94 at 35th", "views": [{"id": 2, "status": "Enabled"}]}]
     assert rb.pick_camera(cams, {}, "94e")["where"] == "I-94 at 35th"
+
+
+def test_145_only_when_the_zoo_is_bad_and_it_saves_ten():
+    import roadboard as rb
+    routes = [{"min": 44.4, "streets": ["I-41 S", "WIS-145 S", "W Fond du Lac Ave", "I-43 S"]},
+              {"min": 53.2, "streets": ["I-41 S", "I-94 E", "I-794 E"]}]
+    red = {"41": {"status": "ok"}, "94e": {"status": "bad"}}
+    calm = {"41": {"status": "ok"}, "94e": {"status": "ok"}}
+    assert rb.alternate(routes, red, 10)["show"] is False            # 9 minutes isn't worth it
+    assert rb.alternate(routes, red, 8)["show"] is True
+    assert rb.alternate(routes, calm, 5)["show"] is False            # the Zoo isn't bad: no 145
+    a = rb.alternate(routes, red, 8)
+    assert (a["via145"], a["zoo"]) == (44, 53)

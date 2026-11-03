@@ -92,9 +92,11 @@ def nearby_times(rows: list, home: tuple[float, float], radius: float = NEAR_MIL
 
 
 class Roads:
-    def __init__(self, house, key: str | None):
+    def __init__(self, house, key: str | None, downtown: str | None = None):
         self.house = house
         self.key = (key or "").strip()
+        self.downtown = (downtown or "").strip()       # where "downtown" ends, for Waze's alternatives
+        self.routes: list = []                          # Waze's routes downtown, right now
         self.events: list = []
         self.times: list = []
         self.cameras: list = []
@@ -140,8 +142,24 @@ class Roads:
         self.events, self.times = nearby_events(ev, here), nearby_times(tt, here)
         if time.time() - self.cameras_at > 3600:          # cameras rarely move: once an hour
             self.cameras, self.cameras_at = nearby_cameras(await self._get("cameras"), here), time.time()
+        if self.downtown:
+            try:
+                self.routes = await self.waze_routes(self.downtown)
+            except Exception as ex:
+                log.info("Roads: Waze alternatives unavailable (%s)", ex)
         self.updated, self.error = time.time(), None
         log.info("Roads: %d incidents within %d miles, %d travel times", len(self.events), NEAR_MILES, len(self.times))
+
+    async def waze_routes(self, destination: str) -> list:
+        """Waze's routes from home, live: each with its minutes and the streets it takes."""
+        url = "http://supervisor/core/api/services/waze_travel_time/get_travel_times?return_response"
+        body = {"origin": "zone.home", "destination": destination, "region": "us", "realtime": True, "units": "imperial"}
+        async with self.house.session.post(url, headers=self.house.hdr(), json=body,
+                                           timeout=aiohttp.ClientTimeout(total=30)) as r:
+            r.raise_for_status()
+            out = await r.json()
+        routes = ((out.get("service_response") or {}).get("routes")) or []
+        return [{"min": x.get("duration"), "streets": x.get("street_names") or []} for x in routes]
 
     async def loop(self):
         while True:
@@ -171,5 +189,5 @@ class Roads:
 
     def report(self) -> dict:
         return {"configured": self.configured, "updated": self.updated or None, "error": self.error,
-                "near_miles": NEAR_MILES, "events": self.events, "times": self.times,
+                "near_miles": NEAR_MILES, "events": self.events, "times": self.times, "routes": self.routes,
                 "cameras": self.cameras}

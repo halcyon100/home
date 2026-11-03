@@ -246,7 +246,20 @@ def short_route(r: str | None) -> str | None:
     return (m.group(1) if m else last).strip()
 
 
-def build(report: dict, states: dict, now: datetime) -> dict:
+def alternate(routes: list, lg: dict, threshold: float = 10) -> dict:
+    """145 through the city, as the way around a bad Zoo: shown only when the Zoo way is red on our
+    legs AND 145 saves at least `threshold` minutes. Not a route we take for a few minutes."""
+    def best(test):
+        ms = [r["min"] for r in routes if r.get("min") is not None and test(r["streets"])]
+        return round(min(ms)) if ms else None
+    via145 = best(lambda st: "W Fond du Lac Ave" in st)
+    zoo = best(lambda st: "I-94 E" in st and "W Fond du Lac Ave" not in st)
+    zoo_red = any(lg.get(k, {}).get("status") == "bad" for k in ("41", "94e"))
+    show = bool(via145 and zoo and zoo_red and zoo - via145 >= threshold)
+    return {"show": show, "via145": via145, "zoo": zoo}
+
+
+def build(report: dict, states: dict, now: datetime, alt_minutes: float = 10) -> dict:
     times, events, cameras = report.get("times") or [], report.get("events") or [], report.get("cameras") or []
     lg = legs(times)
     cl = closures(events, now)
@@ -259,8 +272,11 @@ def build(report: dict, states: dict, now: datetime) -> dict:
             m = None
         trips.append({"name": name, "min": m, "route": short_route((st.get("attributes") or {}).get("route"))})
     say, worst = headline(lg, cl, trips)
+    alt = alternate(report.get("routes") or [], lg, alt_minutes)
+    if alt["show"]:
+        say = f"The Zoo's backed up: {alt['zoo']} min. 145 \u2620\ufe0f is {alt['via145']}."
     cam = pick_camera(cameras, lg, worst)
     view = cam and next((v for v in cam["views"] if (v.get("status") or "").lower() == "enabled"), None)
-    return {"asof": clock(now), "say": say, "trips": trips, "legs": lg, "closures": cl,
+    return {"asof": clock(now), "say": say, "trips": trips, "legs": lg, "closures": cl, "alt": alt,
             "camera": {"view": view["id"], "where": cam["where"]} if view else None,
             "error": report.get("error")}

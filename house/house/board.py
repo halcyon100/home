@@ -721,7 +721,8 @@ class Board:
             return None
         import roadboard
         by = self.house.live.states if self.house.live.ready else {}
-        return roadboard.build(self.roads.report(), by, datetime.now(self.tz))
+        return roadboard.build(self.roads.report(), by, datetime.now(self.tz),
+                               float(self.house.opts.get("roads_alt_minutes", 10)))
 
     @staticmethod
     def roads_looks(b: dict) -> str:
@@ -730,7 +731,8 @@ class Board:
         return json.dumps({"say": b["say"], "legs": {k: v["status"] for k, v in b["legs"].items()},
                            "closures": [c["text"] + c["when"] for c in b["closures"]],
                            "trips": [round((x["min"] or 0) / 5) for x in b["trips"]],
-                           "camera": (b.get("camera") or {}).get("view")}, sort_keys=True)
+                           "camera": (b.get("camera") or {}).get("view"),
+                           "alt": (b.get("alt") or {}).get("show")}, sort_keys=True)
 
     @staticmethod
     def roads_problem(b: dict | None) -> str:

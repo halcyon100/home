@@ -1,5 +1,5 @@
 name: House
-version: "0.22.0"
+version: "0.23.0"
 slug: house
 description: A quiet portal to the house - today's light, shortcuts, motion and what happened.
 url: https://github.com/halcyon100/home/tree/main/house
@@ -52,6 +52,8 @@ schema:
   wi511_key: password?
   roads_from: str?
   roads_until: str?
+  roads_downtown: str?
+  roads_alt_minutes: int?
   board_music: bool?
   climate_mode: str?
   climate_too_cold: str?
