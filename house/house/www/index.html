@@ -106,6 +106,7 @@ main{position:relative;z-index:1}
 .legend i{display:inline-block;width:18px;height:0;border-top:3px solid;border-image:linear-gradient(90deg,#ffb46b,#fff1e0,#dfe8ff) 1;vertical-align:.3em;margin-right:.45em}
 .legend i.base{border-top:1px dashed var(--quiet);border-image:none}
 .legend i.sunl{border-top:2px dotted #FFD27A;border-image:none}
+.legend i.rain{border-top:2px solid #6FB4FF;border-image:none}
 .legend i.sw{height:9px;border:0;background:linear-gradient(90deg,#ffb46b,#fff1e0,#dfe8ff);vertical-align:0}
 
 /* Lower field */
@@ -432,6 +433,19 @@ function draw(){
     if (en > -0.8) sunEl.innerHTML = `<i style="left:${(nowX/W*100).toFixed(2)}%;top:${(ys(en)/H*100).toFixed(2)}%"></i>`; else sunEl.innerHTML = "";
   }
   g.insertAdjacentHTML("beforeend", sunline);
+  // The chance of rain, from now on, on the same 0–100 scale as brightness: a blue line, softly filled
+  const rp = (S.rain||[]).map(r => [X(r.at), r.p]).filter(([x]) => x >= 0 && x <= W);
+  let rainNote = "";
+  if (rp.length > 1 && rp.some(([,p]) => p >= 10)){
+    const ry = p => bot - p/100*(bot-top);
+    const path = rp.map(([x,p],i)=>`${i?"L":"M"}${x.toFixed(1)} ${ry(p).toFixed(1)}`).join("");
+    const pk = rp.reduce((m,r)=>r[1]>m[1]?r:m);
+    g.insertAdjacentHTML("beforeend",
+      `<path d="${path}L${rp[rp.length-1][0].toFixed(1)} ${bot}L${rp[0][0].toFixed(1)} ${bot}Z" fill="#6FB4FF" fill-opacity=".10"/>`+
+      `<path d="${path}" fill="none" stroke="#6FB4FF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`);
+    if (pk[1] >= 20) rainNote = `, up to ${Math.round(pk[1])}% around ${t(new Date(d0.getTime() + pk[0]/W*span))}`;
+    $("legend").insertAdjacentHTML("beforeend", `<span><i class="rain"></i>Chance of rain${rainNote}</span>`);
+  }
   const pct = s => (X(s)/W*100).toFixed(2)+"%";
   $("sunmarks").innerHTML =
     `<span class="sm rise" style="left:${pct(d.sunrise)}">${SUN_UP}<b>${t(d.sunrise)}</b><i>Sunrise</i></span>`+

@@ -25,7 +25,7 @@ import roadboard
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.21.2"
+VERSION = "0.22.0"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -260,10 +260,30 @@ class House:
         self._cache[key] = (time.time(), val)
         return val
 
+    async def hourly(self) -> list:
+        """The Weather Service's hourly forecast (the Kitchen board shares this cache)."""
+        nws = self.opts.get("forecast", "weather.nws")
+        url = "http://supervisor/core/api/services/weather/get_forecasts?return_response"
+        async with self.session.post(url, headers=self.hdr(), data=json.dumps({"entity_id": nws, "type": "hourly"}),
+                                     timeout=aiohttp.ClientTimeout(total=15)) as r:
+            r.raise_for_status()
+            body = await r.json()
+        return ((body.get("service_response") or {}).get(nws) or {}).get("forecast") or []
+
+    async def rain(self) -> list:
+        try:
+            rows = await self.cached("fc-hourly", 600, self.hourly)
+        except Exception as ex:
+            log.info("Rain forecast unavailable: %s", ex)
+            return []
+        return [{"at": r.get("datetime"), "p": r.get("precipitation_probability")} for r in rows[:30]
+                if r.get("precipitation_probability") is not None]
+
     async def state(self):
-        states, day, log_rows, cfg = await asyncio.gather(
+        states, day, log_rows, cfg, rain = await asyncio.gather(
             self.all_states(), self.circadian_day(),
-            self.cached("logbook", 60, self.logbook), self.cached("config", 3600, lambda: self.ha_get("/config")))
+            self.cached("logbook", 60, self.logbook), self.cached("config", 3600, lambda: self.ha_get("/config")),
+            self.rain())
         by = {s["entity_id"]: s for s in states}
 
         def pick(e):
@@ -298,6 +318,7 @@ class House:
             "sun": {"next_rising": sun.get("next_rising"), "next_setting": sun.get("next_setting"),
                     "elevation": sun.get("elevation"), "up": by.get("sun.sun", {}).get("state") == "above_horizon"},
             "circadian": day,
+            "rain": rain,
             "lights": self.lights_on(by),
             "home": {"lat": cfg.get("latitude"), "lon": cfg.get("longitude")},
             "shortcuts": [dict(pick(s["entity"]) or {}, **s) for s in self.shortcuts],

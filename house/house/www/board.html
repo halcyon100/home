@@ -7,8 +7,8 @@
 <style>
 @font-face{font-family:"Archivo";src:url("shared/archivo.woff2") format("woff2-variations");font-weight:100 900;font-stretch:62% 125%}
 /* The Frame, on its side: 2160 × 3840, drawn at 1080 × 1920 and captured at 2× */
-:root{--sun:#FFD27A;--moonline:rgb(232 238 248 / .85);--ink:#F4F1EA;--quiet:rgb(244 241 234 / .68);--hair:rgb(244 241 234 / .28);--glow:rgb(255 226 170 / .9)}
-[data-ink="dark"]{--sun:#D9921C;--moonline:rgb(40 52 66 / .75);--ink:#15191C;--quiet:rgb(21 25 28 / .62);--hair:rgb(21 25 28 / .22);--glow:rgb(30 36 40 / .5)}
+:root{--rain:#7DBBFF;--sun:#FFD27A;--moonline:rgb(232 238 248 / .85);--ink:#F4F1EA;--quiet:rgb(244 241 234 / .68);--hair:rgb(244 241 234 / .28);--glow:rgb(255 226 170 / .9)}
+[data-ink="dark"]{--rain:#2C6FB6;--sun:#D9921C;--moonline:rgb(40 52 66 / .75);--ink:#15191C;--quiet:rgb(21 25 28 / .62);--hair:rgb(21 25 28 / .22);--glow:rgb(30 36 40 / .5)}
 html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#0E151C}
 body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-settings:"tnum" 1,"case" 1;-webkit-font-smoothing:antialiased}
 .sky{position:absolute;inset:0;background-size:cover;background-position:center}
@@ -78,7 +78,7 @@ body{font-family:"Archivo",system-ui,sans-serif;color:var(--ink);font-feature-se
 .key .kt{border-top:3.5px solid var(--ink)}
 .key .ks{border-top:3px dotted var(--sun)}
 .key .kl{height:10px;vertical-align:0;background:linear-gradient(90deg,#ffb46b,#fff1e0,#dfe8ff);opacity:.85;border-radius:2px}
-.key .kr{width:8px;height:16px;vertical-align:-1px;background:var(--ink);opacity:.5;border-radius:2px}
+.key .kr{border-top:3.5px solid var(--rain)}
 
 /* Inside */
 .inside{margin-top:40px;padding-top:22px;border-top:1.5px solid var(--hair)}
@@ -123,7 +123,7 @@ function smooth(pts){
   return d;
 }
 /* The day on one clock: outside temperature (the line), the sun's height (dotted gold),
-   the house's light (a soft band in its own colour) and the chance of rain (ticks at the foot) */
+   the house's light (a soft band in its own color) and the chance of rain (a blue line, 0–100) */
 function chart(hours, nowIdx){
   const W=904, H=260, base=H-34, n=hours.length, x=i=>i/(n-1)*W;
   const ts=hours.map(h=>h.t), lo=Math.min(...ts)-2, hi=Math.max(...ts)+2, y=t=>44+(1-(t-lo)/(hi-lo))*(base-150);
@@ -150,9 +150,13 @@ function chart(hours, nowIdx){
   // the moon, drawn at its highest point on the line (or where it is now, after dark)
   const mi = body[nowIdx]&&body[nowIdx][0]==="moon" ? nowIdx : body.reduce((m,b,i)=>b&&b[0]==="moon"&&(m<0||b[1]>body[m][1])?i:m,-1);
   if (mi>=0 && B_MOON) sunNow+=`<g transform="translate(${(x(mi)-17).toFixed(1)} ${(sy(body[mi][1])-17).toFixed(1)}) scale(1.13)">${moonSvg(B_MOON.f).replace(/<\/?svg[^>]*>/g,"")}</g>`;
-  // rain: ticks along the foot
-  const bw=W/n*.5;
-  const bars=hours.map((h,i)=>h.p>=10?`<rect x="${(x(i)-bw/2).toFixed(1)}" y="${(H-h.p/100*30).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h.p/100*30).toFixed(1)}" rx="2" fill="var(--ink)" opacity="${(.2+h.p/100*.5).toFixed(2)}"/>`:"").join("");
+  // rain: the chance, 0–100, on the same height as the house's light; drawn only if it's worth a look
+  let bars="";
+  if (hours.some(h=>(h.p||0)>=10)){
+    const rp=hours.map((h,i)=>[x(i), base-((h.p||0)/100)*(base-70)]);
+    bars=`<path d="${smooth(rp)}L${W} ${base}L0 ${base}Z" fill="var(--rain)" opacity=".14"/>
+      <path d="${smooth(rp)}" fill="none" stroke="var(--rain)" stroke-width="3.5" stroke-linecap="round"/>`;
+  }
   const hiI=ts.indexOf(Math.max(...ts)), lab=(i,txt,dy)=>`<text x="${x(i)}" y="${y(hours[i].t)+dy}" text-anchor="middle" font-size="30" font-weight="520" fill="var(--ink)">${txt}</text>`;
   const [nx,ny]=pts[nowIdx];
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
