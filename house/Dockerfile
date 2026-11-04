@@ -5,8 +5,10 @@ ENV TZ=America/Chicago \
 
 # Chromium draws the kitchen board for the Frame (headless, local pages only).
 # It comes from Debian and updates with the image's security patches when the app is rebuilt.
+# Fonts beyond Archivo's Latin: Chinese, Japanese and Korean (album titles like "fête：祝祭"),
+# and color emoji (the ☠️ on the roads board).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tzdata chromium \
+    && apt-get install -y --no-install-recommends tzdata chromium fonts-noto-cjk fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
