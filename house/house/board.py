@@ -470,14 +470,20 @@ def _hhmm(v: str, fallback: str) -> tuple[int, int]:
 
 
 class Board:
-    """Runs the Frame's one board slot. Three boards can want it:
-      weather  mornings, when someone's in the kitchen
-      roads    any time someone's in the kitchen (when 511 is set up)
-      music    whenever the kitchen plays a record
-    The ones wanted take turns (`alternate` seconds each, in that order). News jumps the queue: a new
-    track, or a new problem on the roads. Nobody in the kitchen and no record: the art comes back."""
+    """Runs the Frame's one board slot, as turns of `alternate` seconds (3 minutes) while someone's in
+    the kitchen. What the turns are depends on the time of day (PATTERNS): mornings are all boards
+    (weather, roads); the rest of the day is mostly art, with the weather every fourth turn and the roads
+    now and then; after 9 pm, art and the weather. Each art turn is a new photo. Walking in starts with
+    the weather. Music playing takes the art turns with the record's sleeve; a new track, or a new
+    problem on the roads, jumps the queue. Nobody in the kitchen: the art comes back for good."""
 
     ORDER = ("weather", "roads", "music")
+    BOARDS = ("weather", "roads", "music")
+    PATTERNS = {
+        "morning": ["weather", "roads"],
+        "day": ["art", "art", "art", "weather", "art", "art", "art", "weather", "art", "art", "art", "roads"],
+        "night": ["art", "art", "art", "weather"],
+    }
 
     def __init__(self, house, opts: dict):
         self.house = house
@@ -519,6 +525,11 @@ class Board:
         self.roads_from = _hhmm(opts.get("roads_from"), "05:00")
         self.roads_until = _hhmm(opts.get("roads_until"), "21:00")   # after 9 pm nobody's heading out
         self.road_news = ""                # the roads' problem, as last staged / shown
+        self.slot, self.slot_at = 0, 0.0   # where we are in today's pattern
+        self.was_here = False
+        self.override: tuple[str, float] | None = None   # news, shown out of turn until a time
+        self.resting = False               # an art turn, with a board still on the TV for the next one
+        self.art_for = -1.0                # the turn the current photo was picked for
         self.shown_road_news = ""
 
     # ------------------------------------------------------------ data
@@ -694,19 +705,38 @@ class Board:
         st = await self.house.ha_get(f"/states/{self.sensor}")
         return st.get("state") == "on"
 
-    def choose(self, wanted: list[str], t: float, news: str | None = None) -> str | None:
-        """What the Frame's board slot shows now, from the boards that want it (in ORDER).
-        One wanted: that one. Several: they take turns; `news` (a board with something new) goes next."""
-        wanted = [k for k in self.ORDER if k in wanted]
-        if not wanted:
-            return None
-        if not self.showing or self.turn not in wanted:
-            return wanted[0]
-        if news in wanted and news != self.turn:
-            return news
-        if len(wanted) > 1 and t - self.turn_at >= self.alternate:
-            return wanted[(wanted.index(self.turn) + 1) % len(wanted)]
-        return self.turn
+    def period(self, now: datetime) -> str:
+        if self.in_window(now):
+            return "morning"
+        return "day" if self.roads_hours(now) else "night"
+
+    def pattern(self, period: str, music: bool, roads: bool) -> list[str]:
+        """Today's turns for this part of the day: roads only when we have them, the record's sleeve
+        in place of art while the kitchen plays (and as a turn of its own in the morning)."""
+        pat = [("weather" if k == "roads" and not roads else k) for k in self.PATTERNS[period]]
+        if music:
+            pat = [("music" if k == "art" else k) for k in pat]
+            if "music" not in pat:
+                pat.append("music")
+        return pat
+
+    def turns(self, pat: list[str], t: float, arrived: bool) -> str:
+        """Advance through the pattern one turn per `alternate` seconds; arriving starts at the weather."""
+        if arrived:
+            # the last weather in the pattern, so the roads come round soonest after it
+            self.slot, self.slot_at = (len(pat) - 1 - pat[::-1].index("weather") if "weather" in pat else 0), t
+        elif t - self.slot_at >= self.alternate:
+            self.slot, self.slot_at = (self.slot + 1) % len(pat), t
+        self.slot %= len(pat)
+        return pat[self.slot]
+
+    def upcoming(self, pat: list[str]) -> str | None:
+        """The next board in the pattern after this turn: what to have on the TV, ready."""
+        for k in range(1, len(pat) + 1):
+            kind = pat[(self.slot + k) % len(pat)]
+            if kind in self.BOARDS:
+                return kind
+        return None
 
     def news(self, wanted: list[str]) -> str | None:
         """Which board has something new to say: a new track, or a new problem on the roads."""
@@ -742,10 +772,10 @@ class Board:
 
     async def tick(self):
         t = time.time()
+        now = datetime.now(self.tz)
         trying = t < self.try_until
         if await self.present() or trying:
             self.last_seen = t
-        window = self.in_window(datetime.now(self.tz)) or trying
         grace = 5 if self.try_until else self.linger
         here = self.last_seen > 0 and t - self.last_seen <= grace
         m = await self.music_now()
@@ -754,22 +784,46 @@ class Board:
         want_music = self.music is not None and t - self.music_seen <= self.music_grace
         if not want_music:
             self.music = None
-        rb = self.roads_board() if not trying and self.roads_hours(datetime.now(self.tz)) else None
-        wanted = ([("weather")] if window and here else []) + (["roads"] if rb and here else []) + \
-                 (["music"] if want_music else [])
+        rb = self.roads_board() if not trying and self.roads_hours(now) else None
         if rb and self.turn != "roads":
             self.road_news = self.roads_problem(rb)           # a problem that appears while away is news
-        target = self.choose(wanted, t, self.news(wanted))
 
-        # Keep the right picture staged: what's wanted now, or what arrival would show first, ready for it
-        prep = target or ("weather" if window else "roads" if rb else None)
+        # What this turn is
+        pat: list[str] = []
+        if trying:
+            target = "weather"
+        elif here:
+            if not self.was_here:                              # walking in isn't news: start with the weather
+                self.shown_track, self.shown_road_news = self.track(self.music), self.road_news
+            pat = self.pattern(self.period(now), want_music, bool(rb))
+            target = self.turns(pat, t, arrived=not self.was_here)
+            news = self.news([k for k in pat if k in self.BOARDS])
+            if news and not self.override:
+                self.override = (news, t + self.alternate)
+            if self.override:
+                if t < self.override[1]:
+                    target = self.override[0]
+                else:
+                    self.override = None
+        else:
+            target = "music" if want_music else None          # the record shows even with nobody in
+            self.override = None
+        self.was_here = here and not trying
+
+        # Keep the right board on the TV: this turn's, or (during art, or away) the next one, ready
+        if target in self.BOARDS:
+            prep = target
+        elif target == "art":
+            prep = self.upcoming(pat)
+        else:
+            prep = "weather"                                   # arrival starts with the weather
         age = t - self.staged_at
         if prep and not self.staging:
             if self.staged_kind != prep or not self.has_picture:
                 self.staging = asyncio.create_task(self._stage_bg(prep))
             elif prep == "music" and self.staged_looks != self.track(self.music):
                 self.staging = asyncio.create_task(self._stage_bg("music"))      # the next track
-            elif prep == "roads":
+            elif prep == "roads" and rb:
                 if age > self.every or (age > (self.gap_showing if self.showing else self.every)
                                         and self.roads_looks(rb) != self.staged_looks):
                     self.staging = asyncio.create_task(self._stage_bg("roads"))
@@ -783,22 +837,29 @@ class Board:
                     if self.looks(await self.data()) != self.staged_looks:
                         self.staging = asyncio.create_task(self._stage_bg("weather"))
 
-        if target and not self.showing and self.has_picture and self.staged_kind == target:
+        # Put it on the screen
+        if target in self.BOARDS and not self.showing and self.has_picture and self.staged_kind == target:
             r = await self.frame_post("/api/board/show")
             self.showing = bool(r.get("ok"))
             if self.showing:
+                self.resting = False
                 self.on_screen(target)
             log.info("Frame: %s %s", {"music": "now playing", "roads": "roads"}.get(target, "kitchen board"),
                      "on" if self.showing else f"not shown ({r.get('reason')})")
-        if self.showing and target is None:
+        elif target == "art" and self.has_picture and (self.showing or self.art_for != self.slot_at):
+            # An art turn: a new photo, the board kept on the TV for its next turn
+            r = await self.frame_post("/api/board/rest")
+            self.art_for = self.slot_at
+            if r.get("ok"):
+                self.showing, self.resting, self.turn = False, True, "art"
+                self.turn_at = t
+        if target is None and (self.showing or self.resting):
             await self.frame_post("/api/board/hide")
-            self.showing, self.turn, self.shown_track = False, None, ""
+            self.showing = self.resting = False
+            self.turn, self.shown_track = None, ""
             self.staged_kind, self.staged_at, self.has_picture = None, 0.0, False   # the Frame took it off the TV
             self.try_until = 0.0
-            log.info("Frame: nothing to show; art's back")
-        if prep is None and not self.showing and self.has_picture and not self.staging:
-            await self.frame_post("/api/board/hide")   # take the staged picture off the TV for the day
-            self.staged_kind, self.staged_at, self.has_picture = None, 0.0, False
+            log.info("Frame: nobody in the kitchen; art's back")
 
     async def try_now(self, minutes: int = 3) -> dict:
         """Put the weather board up now, whatever the time, and take it down after a few minutes."""

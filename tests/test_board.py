@@ -132,27 +132,6 @@ def _board():
     return b
 
 
-def test_music_alone_shows_music_weather_alone_shows_weather():
-    b = _board()
-    assert b.choose(["music"], 1000, b.news(["music"])) == "music"
-    assert b.choose(["weather"], 1000, b.news(["weather"])) == "weather"
-    assert b.choose([], 1000, b.news([])) is None
-
-
-def test_morning_with_music_takes_turns_starting_with_weather():
-    b = _board()
-    assert b.choose(["weather", "music"], 1000, b.news(["weather", "music"])) == "weather"          # nothing up yet: the morning board first
-    b.showing = True
-    b.on_screen("weather")
-    b.turn_at = 1000
-    assert b.choose(["weather", "music"], 1100, b.news(["weather", "music"])) == "weather"          # its turn isn't over
-    assert b.choose(["weather", "music"], 1180, b.news(["weather", "music"])) == "music"            # three minutes: the record's turn
-    b.on_screen("music")
-    b.turn_at = 1180
-    assert b.choose(["weather", "music"], 1300, b.news(["weather", "music"])) == "music"
-    assert b.choose(["weather", "music"], 1360, b.news(["weather", "music"])) == "weather"
-
-
 def test_track_key_changes_with_the_song():
     from board import Board
     a = {"title": "Kerala", "artist": "Bonobo", "album": "Migration", "art": "/api/x"}
@@ -160,46 +139,41 @@ def test_track_key_changes_with_the_song():
     assert Board.track(None) == ""
 
 
-def test_a_new_track_jumps_the_queue_in_the_morning():
+def test_patterns_by_time_of_day():
     b = _board()
-    b.music = {"title": "Kerala", "artist": "Bonobo", "album": "Migration", "art": "/a"}
-    b.np = dict(b.music)
-    b.showing = True
-    b.on_screen("music")
-    b.turn_at = 1000
-    b.on_screen("weather")
-    b.turn_at = 1180
-    assert b.choose(["weather", "music"], 1200, b.news(["weather", "music"])) == "weather"           # same song: the weather keeps its turn
-    b.music = {**b.music, "title": "Break Apart"}
-    assert b.choose(["weather", "music"], 1200, b.news(["weather", "music"])) == "music"             # new song: show it now
+    assert b.pattern("morning", False, True) == ["weather", "roads"]
+    day = b.pattern("day", False, True)
+    assert day.count("art") == 9 and day.count("weather") == 2 and day.count("roads") == 1
+    assert b.pattern("night", False, False) == ["art", "art", "art", "weather"]
+    assert "roads" not in b.pattern("day", False, False)            # no 511 data: the weather instead
+    assert b.pattern("night", True, False) == ["music", "music", "music", "weather"]
+    assert b.pattern("morning", True, True) == ["weather", "roads", "music"]
 
 
-def test_music_already_playing_on_arrival_lets_the_weather_go_first():
+def test_period_follows_the_clock():
+    from datetime import datetime
     b = _board()
-    b.music = {"title": "Kerala", "artist": "Bonobo", "album": "Migration", "art": "/a"}
-    assert b.choose(["weather", "music"], 1000, b.news(["weather", "music"])) == "weather"
-    b.showing = True
-    b.on_screen("weather")
-    b.turn_at = 1000
-    assert b.choose(["weather", "music"], 1010, b.news(["weather", "music"])) == "weather"           # not bumped by a song that was already on
-    assert b.choose(["weather", "music"], 1180, b.news(["weather", "music"])) == "music"
+    assert b.period(datetime(2026, 11, 3, 7, 0)) == "morning"
+    assert b.period(datetime(2026, 11, 3, 15, 0)) == "day"
+    assert b.period(datetime(2026, 11, 3, 21, 30)) == "night"
 
 
-def test_roads_join_the_rotation_and_a_new_problem_jumps():
+def test_walking_in_starts_with_the_weather_then_three_photos():
     b = _board()
-    want = ["weather", "roads", "music"]
-    assert b.choose(want, 1000, b.news(want)) == "weather"
-    b.showing = True
-    b.on_screen("weather"); b.turn_at = 1000
-    b.music = {"title": "Kerala"}; b.shown_track = b.track(b.music)
-    assert b.choose(want, 1180, b.news(want)) == "roads"           # turns go in order
-    b.on_screen("roads"); b.turn_at = 1180
-    assert b.choose(want, 1360, b.news(want)) == "music"
-    b.on_screen("music"); b.turn_at = 1360
-    b.road_news = "41"                                               # 41 just went slow
-    assert b.choose(want, 1400, b.news(want)) == "roads"
-    b.on_screen("roads")
-    assert b.news(want) is None                                      # shown: no longer news
+    pat = b.pattern("day", False, True)
+    assert b.turns(pat, 1000, arrived=True) == "weather"
+    seen = [b.turns(pat, 1000 + 180 * k, arrived=False) for k in range(1, 9)]
+    assert seen == ["art", "art", "art", "roads", "art", "art", "art", "weather"]          # roads soonest
+    assert b.turns(pat, 1000 + 180 * 8 + 60, arrived=False) == "weather"   # a turn lasts 3 minutes
+
+
+def test_the_next_board_is_staged_during_art():
+    b = _board()
+    pat = b.pattern("day", False, True)
+    b.slot = 4                                     # art, after the first weather
+    assert b.upcoming(pat) == "weather"
+    b.slot = 9
+    assert b.upcoming(pat) == "roads"
 
 
 def test_roads_stop_at_nine():

@@ -1260,8 +1260,10 @@ def api_board_show() -> dict:
         prev = TVC.call(current)
         rot = read_rotation()
         b["prev"] = prev if prev != cid else b.get("prev")
-        b["rotation"] = rot if rot and str(rot.get("value", "off")).lower() not in ("off", "0", "") else None
-        if b["rotation"]:
+        live = rot if rot and str(rot.get("value", "off")).lower() not in ("off", "0", "") else None
+        # Back from an art turn the TV's rotation is still paused by us: keep what we saved to restore
+        b["rotation"] = live or b.get("rotation")
+        if live:
             try:
                 set_rotation(0, rot.get("category") or MY_PHOTOS, True)
             except Exception as e:
@@ -1288,6 +1290,44 @@ def api_board_show() -> dict:
     threading.Thread(target=publish_state, daemon=True).start()
     log.info("Board on screen (was %s, brightness %s → +%d)", b.get("prev"), b.get("brightness"), BOARD_BRIGHTER)
     return {"ok": True, "id": cid}
+
+
+def api_board_rest() -> dict:
+    """A turn of art between boards: show the next photo, but keep the board on the TV (and the TV's
+    own rotation paused) so the next board turn is instant. Each call is a new photo; the house app
+    calls it once per art turn. api_board_hide is still the end of it all."""
+    import random
+    with BOARD_LOCK:
+        b = board_state()
+        cid = b.get("id")
+        if not cid:
+            return {"ok": False, "reason": "Nothing staged"}
+        if TVC.power() != "on":
+            return {"ok": False, "reason": "The TV is off"}
+        pl = STATE.get("playing") or {}
+        target = pl.get("target") or "all"
+        pool = my_photo_ids() if target == "all" else collections().get(target, {}).get("items", []) or my_photo_ids()
+        seen = [i for i in (b.get("rest_seen") or []) if i in pool]
+        current = b.get("prev")
+        fresh = [i for i in pool if i not in seen and i not in (cid, current)] or [i for i in pool if i not in (cid, current)]
+        if not fresh:
+            return {"ok": False, "reason": "No photos to show"}
+        nxt = random.choice(fresh)
+        TVC.call(lambda a: a.select_image(nxt, show=True))
+        if b.get("showing") and b.get("brightness") is not None:
+            try:
+                if sched_settings()["on"]:
+                    apply_schedule(force=True)
+                else:
+                    level = int(b["brightness"])
+                    oneshot(lambda a: a.set_brightness(str(level)), 8)
+            except Exception as e:
+                log.info("Board: couldn't put the brightness back (%s)", e)
+        b.update(showing=False, prev=nxt, rest_seen=(seen + [nxt])[-60:])
+        STATE.set("board", b)
+    threading.Thread(target=publish_state, daemon=True).start()
+    log.info("Art turn: %s (board kept)", nxt)
+    return {"ok": True, "id": nxt}
 
 
 def api_board_hide() -> dict:
@@ -1732,6 +1772,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(api_board_show())
             if url.path == "/api/board/hide":
                 return self.send_json(api_board_hide())
+            if url.path == "/api/board/rest":
+                return self.send_json(api_board_rest())
             if url.path == "/api/original":
                 try:
                     return self.send_json(save_original(q.get("id", [""])[0], self.read_body(40 * 1024 * 1024)))
