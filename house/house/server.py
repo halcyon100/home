@@ -20,12 +20,13 @@ from board import Board, observed
 from guide import Guide
 from live import Live
 from roads import Roads
+from climatelog import ClimateLog
 import roadboard
 
 log = logging.getLogger("house")
 WWW = Path(__file__).parent / "www"
 HA = "http://supervisor/core/api"
-VERSION = "0.24.3"
+VERSION = "0.25.0"
 INGRESS = "172.30.32.2"     # the Supervisor's ingress proxy: requests from it are signed in to Home Assistant
 
 
@@ -455,11 +456,13 @@ def make_app(house: House) -> web.Application:
     guide = Guide()
     roads = Roads(house, house.opts.get("wi511_key"), house.opts.get("roads_downtown"))
     board.roads = roads
+    climlog = ClimateLog(house)
 
     async def on_start(_app):
         house.session = aiohttp.ClientSession()
         app["live"] = asyncio.create_task(house.live.run(house.session))
         roads.start()
+        climlog.start()
         app["board_loop"] = asyncio.create_task(board.loop())
 
     async def on_stop(_app):
@@ -598,6 +601,13 @@ def make_app(house: House) -> web.Application:
         # The foot of Home: which release is running, and when the guide last changed.
         return web.json_response({"version": VERSION, "updated": int(guide.updated() or 0)})
 
+    async def api_climate_log(req):
+        try:
+            days = min(31.0, float(req.query.get("days", 1)))
+        except ValueError:
+            days = 1.0
+        return web.json_response({"rows": climlog.recent(days)})
+
     async def api_roads(_req):
         return web.json_response(roads.report())
 
@@ -627,6 +637,7 @@ def make_app(house: House) -> web.Application:
     app.router.add_get("/", index)
     app.router.add_get("/api/state", api_state)
     app.router.add_get("/api/roads", api_roads)
+    app.router.add_get("/api/climate/log", api_climate_log)
     app.router.add_get("/roads", roads_page)
     app.router.add_get("/api/roads/board", api_roads_board)
     app.router.add_get("/api/roads/cam/{view}", api_roads_cam)
